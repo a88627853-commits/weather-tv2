@@ -21,6 +21,7 @@ CACHE_TTL = 60
 
 
 def fetch_city(city):
+
     url = "http://api.weatherapi.com/v1/forecast.json"
 
     params = {
@@ -32,30 +33,46 @@ def fetch_city(city):
     }
 
     try:
-        r = requests.get(url, params=params, timeout=10).json()
+        r = requests.get(url, params=params, timeout=10)
 
-        cur = r.get("current", {})
+        data = r.json()
+
+        if "error" in data:
+            print("BŁĄD:", city)
+            print(data["error"])
+
+        current = data.get("current", {})
+        condition = current.get("condition", {})
 
         return {
             "name": city,
-            "temp": cur.get("temp_c"),
-            "feels": cur.get("feelslike_c"),
-            "wind": cur.get("wind_kph"),
-            "humidity": cur.get("humidity"),
-            "pressure": cur.get("pressure_mb"),
-            "cloud": cur.get("cloud"),
-            "vis": cur.get("vis_km"),
-            "code": cur.get("condition", {}).get("code"),
-            "text": cur.get("condition", {}).get("text"),
-            "icon": cur.get("condition", {}).get("icon")
+            "temp": current.get("temp_c"),
+            "wind": current.get("wind_kph"),
+            "humidity": current.get("humidity"),
+            "pressure": current.get("pressure_mb"),
+            "cloud": current.get("cloud"),
+            "feels": current.get("feelslike_c"),
+            "vis": current.get("vis_km"),
+            "text": condition.get("text"),
+            "icon": condition.get("icon"),
+            "code": condition.get("code")
         }
 
-    except:
+    except Exception as e:
+        print("EXCEPTION:", city, e)
+
         return {
             "name": city,
             "temp": None,
             "wind": None,
-            "humidity": None
+            "humidity": None,
+            "pressure": None,
+            "cloud": None,
+            "feels": None,
+            "vis": None,
+            "text": None,
+            "icon": None,
+            "code": None
         }
 
 
