@@ -4,7 +4,7 @@ import time
 
 app = Flask(__name__)
 
-API_KEY = "e20abb7bb600400fb2c134205260506" # 🔴 tylko backend
+API_KEY = "e20abb7bb600400fb2c134205260506"  # backend only (nie dotykam 😄)
 
 CITIES = [
     "Zakopane","Przemyśl","Bielsko-Biała","Kraków","Katowice",
@@ -20,6 +20,9 @@ CACHE_TIME = 0
 CACHE_TTL = 60
 
 
+# =========================
+# WEATHER FETCH (STABILNY)
+# =========================
 def fetch_city(city):
     url = "https://api.weatherapi.com/v1/forecast.json"
 
@@ -36,7 +39,6 @@ def fetch_city(city):
         data = r.json()
 
         if "error" in data:
-            print("WeatherAPI ERROR:", city, data["error"])
             return {
                 "name": city,
                 "temp": None,
@@ -52,7 +54,11 @@ def fetch_city(city):
             }
 
         current = data.get("current") or {}
-        condition = current.get("condition") or {}
+        cond = current.get("condition") or {}
+
+        icon = cond.get("icon")
+        if icon and icon.startswith("//"):
+            icon = "https:" + icon
 
         return {
             "name": city,
@@ -63,14 +69,12 @@ def fetch_city(city):
             "cloud": current.get("cloud"),
             "feels": current.get("feelslike_c"),
             "vis": current.get("vis_km"),
-
-            "text": condition.get("text"),
-            "icon": "https:" + condition.get("icon", "") if condition.get("icon") else None,
-            "code": condition.get("code")
+            "text": cond.get("text"),
+            "icon": icon,
+            "code": cond.get("code")
         }
 
-    except Exception as e:
-        print("EXCEPTION:", city, e)
+    except Exception:
         return {
             "name": city,
             "temp": None,
@@ -86,6 +90,9 @@ def fetch_city(city):
         }
 
 
+# =========================
+# CACHE (ANTI-LAG + RATE LIMIT SAFE)
+# =========================
 def get_data():
     global CACHE, CACHE_TIME
 
@@ -93,15 +100,20 @@ def get_data():
 
     if CACHE is None or (now - CACHE_TIME) > CACHE_TTL:
         new_cache = []
+
         for c in CITIES:
             new_cache.append(fetch_city(c))
-            time.sleep(0.15)  # anti-rate-limit
+            time.sleep(0.12)  # chroni API przed limitem
+
         CACHE = new_cache
         CACHE_TIME = now
 
     return CACHE
 
 
+# =========================
+# ROUTES
+# =========================
 @app.route("/")
 def home():
     return send_from_directory(".", "index.html")
@@ -117,5 +129,8 @@ def static_files(path):
     return send_from_directory(".", path)
 
 
+# =========================
+# START
+# =========================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
