@@ -121,21 +121,42 @@ function weatherScore(c){
     if(!c || !c.temp) return 999;
 
     let score = 0;
+    const t = (c.text || "").toLowerCase();
 
-    if(c.text){
-        const t = c.text.toLowerCase();
-        if(t.includes("thunder")) score += 80;
-        if(t.includes("rain")) score += 60;
-        if(t.includes("drizzle")) score += 40;
-        if(t.includes("fog")) score += 70;
-        if(t.includes("mist")) score += 50;
-    }
+    /* =========================
+       🔴 EKSTREMALNE WARUNKI
+    ========================= */
+    if(t.includes("thunder")) score += 120;
+    else if(t.includes("heavy rain") || t.includes("downpour")) score += 100;
 
-    score += (c.cloud ?? 0) * 0.3;
-    score += (c.wind ?? 0) * 0.8;
+    /* =========================
+       🟠 SILNE OPADY
+    ========================= */
+    else if(t.includes("rain")) score += 55;
+    else if(t.includes("drizzle")) score += 15;
 
+    /* =========================
+       🌫 MGŁA / WIDOCZNOŚĆ
+    ========================= */
+    if(t.includes("fog")) score += 70;
+    if(t.includes("mist")) score += 50;
+
+    /* =========================
+       ☁ CHMURY (łagodnie)
+    ========================= */
+    score += (c.cloud ?? 0) * 0.15;
+
+    /* =========================
+       💨 WIATR (realistycznie)
+    ========================= */
+    score += (c.wind ?? 0) * 0.4;
+
+    /* =========================
+       👀 WIDOCZNOŚĆ (mały wpływ)
+    ========================= */
     if(c.vis != null){
-        score += (10 - c.vis) * 5;
+        if(c.vis < 2) score += 60;
+        else if(c.vis < 5) score += 30;
     }
 
     return score;
