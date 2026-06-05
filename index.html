@@ -27,28 +27,25 @@ body {
     object-fit:cover;
 }
 
-/* =========================
-   MARKERY (KROPKI)
-========================= */
+/* MARKERY */
 .marker {
     position:absolute;
-    width:12px;
-    height:12px;
+    width:14px;
+    height:14px;
     border-radius:50%;
     transform:translate(-50%,-50%);
     border:2px solid white;
-    transition:all 0.6s ease;
+    transition:all 0.5s ease;
+    background-size:cover;
 }
 
-.marker.sunny { background:#00ff00; }
-.marker.cloudy { background:#a0a0a0; }
-.marker.rain { background:#0099ff; }
-.marker.storm { background:#ff0000; }
-.marker.fog { background:#bbbbbb; }
+.marker.sunny { background-color:#00ff00; }
+.marker.cloudy { background-color:#999999; }
+.marker.rain { background-color:#0099ff; }
+.marker.storm { background-color:#ff0000; }
+.marker.fog { background-color:#bbbbbb; }
 
-/* =========================
-   TICKER
-========================= */
+/* TICKER */
 #ticker {
     position:fixed;
     bottom:0;
@@ -62,7 +59,7 @@ body {
 #ticker span {
     display:inline-block;
     padding-left:100%;
-    animation:scroll 90s linear infinite;
+    animation:scroll 80s linear infinite;
 }
 
 @keyframes scroll {
@@ -70,13 +67,13 @@ body {
     100% { transform:translateX(-100%); }
 }
 
-/* =========================
-   EAS
-========================= */
+/* EAS */
 #eas {
     position:fixed;
-    top:0; left:0;
-    width:100%; height:100%;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
     display:none;
     justify-content:center;
     align-items:center;
@@ -85,9 +82,7 @@ body {
     z-index:999;
 }
 
-/* =========================
-   SLIDER KALIBRACJI MAPY
-========================= */
+/* SUWAK */
 #sliderBox {
     position:fixed;
     top:10px;
@@ -96,15 +91,14 @@ body {
     padding:10px;
     z-index:9999;
 }
-
 </style>
 </head>
 
 <body>
 
 <div id="sliderBox">
-    X offset <input id="xoff" type="range" min="-100" max="100" value="0"><br>
-    Y offset <input id="yoff" type="range" min="-100" max="100" value="0">
+    X <input id="xoff" type="range" min="-100" max="100" value="0"><br>
+    Y <input id="yoff" type="range" min="-100" max="100" value="0">
 </div>
 
 <div id="tv">
@@ -116,9 +110,7 @@ body {
 
 <script>
 
-/* =========================
-   MAPA + KALIBRACJA
-========================= */
+/* MAPA + OFFSET */
 const MAP = {
     latMin:49.0,
     latMax:55.2,
@@ -138,20 +130,15 @@ function geo(lat, lon){
     };
 }
 
-
-/* =========================
-   TTS (BEZ GLITCHY)
-========================= */
+/* TTS */
 const TTS = {
-    lastText: "",
+    last:"",
 
     speak(text){
         if(!("speechSynthesis" in window)) return;
+        if(text === this.last) return;
 
-        if(text === this.lastText) return; // 🔥 FIX: brak powtórek
-
-        this.lastText = text;
-
+        this.last = text;
         speechSynthesis.cancel();
 
         const msg = new SpeechSynthesisUtterance(text);
@@ -162,27 +149,20 @@ const TTS = {
     }
 };
 
+/* KOLOR */
+function getClass(c){
+    if(!c) return "fog";
 
-/* =========================
-   KOLOR POGODY
-========================= */
-function getClass(city){
-    if(!city.temp) return "fog";
-
-    if(city.code >= 1000 && city.code < 1100) return "sunny";
-    if(city.text && city.text.toLowerCase().includes("rain")) return "rain";
-    if(city.text && city.text.toLowerCase().includes("thunder")) return "storm";
-    if(city.cloud > 70) return "cloudy";
+    if(c.code === 1000) return "sunny";
+    if(c.text && c.text.toLowerCase().includes("rain")) return "rain";
+    if(c.text && c.text.toLowerCase().includes("thunder")) return "storm";
+    if(c.cloud > 70) return "cloudy";
 
     return "cloudy";
 }
 
-
-/* =========================
-   MARKERY
-========================= */
+/* MARKERY */
 function draw(cities){
-
     document.querySelectorAll(".marker").forEach(e=>e.remove());
 
     cities.forEach(c=>{
@@ -193,51 +173,35 @@ function draw(cities){
         let d = document.createElement("div");
         d.className = "marker " + getClass(c);
 
-        d.style.left = p.x+"px";
-        d.style.top = p.y+"px";
+        d.style.left = p.x + "px";
+        d.style.top = p.y + "px";
 
-        /* ikona pogody */
         if(c.icon){
             d.style.backgroundImage = `url(${c.icon})`;
-            d.style.backgroundSize = "cover";
         }
 
         document.getElementById("tv").appendChild(d);
     });
 }
 
-
-/* =========================
-   SMOOTH TICKER + TTS FIX
-========================= */
-let lastSnapshot = "";
+/* TICKER */
+let last = "";
 
 function ticker(cities){
 
-    const text = cities.map(c => {
-
-        const temp = c.temp ?? "?";
-        const wind = c.wind ?? "?";
-        const hum = c.humidity ?? "?";
-        const pres = c.pressure ?? "?";
-
-        return `${c.name}: ${temp}°C | Wiatr ${wind}km/h | Wilg ${hum}% | Ciśn ${pres}hPa`;
-
+    const text = cities.map(c=>{
+        return `${c.name}: ${c.temp ?? "?"}°C | Wiatr ${c.wind ?? "?"}km/h | Wilg ${c.humidity ?? "?"}% | Ciśn ${c.pressure ?? "?"}hPa`;
     }).join(" || ");
 
     document.querySelector("#ticker span").textContent = text;
 
-    /* 🔥 TTS tylko gdy zmiana */
-    if(text !== lastSnapshot){
-        TTS.speak("Nowa prognoza pogodowa została zaktualizowana");
-        lastSnapshot = text;
+    if(text !== last){
+        TTS.speak("Aktualizacja pogody");
+        last = text;
     }
 }
 
-
-/* =========================
-   EAS
-========================= */
+/* EAS */
 function eas(cities){
     let active = cities.some(c=>c.alert==="EAS");
     let box = document.getElementById("eas");
@@ -251,10 +215,7 @@ function eas(cities){
     }
 }
 
-
-/* =========================
-   MAIN LOOP (SMOOTH UPDATE)
-========================= */
+/* LOOP */
 function load(){
     fetch("/data")
     .then(r=>r.json())
@@ -265,7 +226,7 @@ function load(){
     });
 }
 
-setInterval(load, 10000); // stabilniej niż spam 15s
+setInterval(load, 10000);
 load();
 
 </script>
