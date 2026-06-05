@@ -2,6 +2,7 @@ from flask import Flask, jsonify, send_from_directory, request
 import requests
 import threading
 import time
+import os
 
 app = Flask(__name__)
 
@@ -28,7 +29,7 @@ EAS_END_TIME = 0
 
 
 # =========================
-# WEATHER FETCH
+# WEATHER
 # =========================
 def get_city(i):
     url = "https://api.open-meteo.com/v1/forecast"
@@ -88,40 +89,44 @@ def home():
 def data():
     return jsonify({
         "eas": EAS_ACTIVE,
-        "cities": [get_city(i) for i in range(len(NAMES))]
+        "cities": [get_city(i) for i in range(len(NAMES))],
+        "system_info": "Weather-TV system built step-by-step over multiple hours (stream build mode)"
     })
 
 
 # =========================
-# ESP32 TRIGGER (GPIO13 BUTTON)
+# ESP32 TRIGGER
 # =========================
 @app.route("/esp32/eas_test", methods=["POST"])
 def esp32_eas():
     global EAS_ACTIVE, EAS_END_TIME
 
-    print("🔴 ESP32 BUTTON PRESSED → EAS TEST")
+    print("🔴 ESP32 TRIGGER → EAS TEST MODE")
 
     EAS_ACTIVE = True
-    EAS_END_TIME = time.time() + 60  # 1 minute
+    EAS_END_TIME = time.time() + 60
 
-    return jsonify({"status": "EAS TEST STARTED", "duration": 60})
+    return jsonify({"status": "EAS TEST ACTIVE", "duration": 60})
 
 
 # =========================
-# AUTO TURN OFF EAS
+# EAS WATCHER
 # =========================
 def eas_watcher():
     global EAS_ACTIVE
 
     while True:
         if EAS_ACTIVE and time.time() > EAS_END_TIME:
-            print("🟢 EAS END")
+            print("🟢 EAS STOP")
             EAS_ACTIVE = False
 
         time.sleep(1)
 
 
-import os
+# =========================
+# START
+# =========================
+threading.Thread(target=eas_watcher, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
