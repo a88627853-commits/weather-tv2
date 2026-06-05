@@ -35,7 +35,7 @@ body {
     border-radius:50%;
     transform:translate(-50%,-50%);
     border:2px solid white;
-    transition:all 0.5s ease;
+    transition:all 0.4s ease;
     display:flex;
     align-items:center;
     justify-content:center;
@@ -135,7 +135,7 @@ function geo(lat, lon){
     };
 }
 
-/* TTS QUEUE (NIE GLITCHUJE) */
+/* TTS */
 const SpeechQueue = {
     q: [],
     speaking: false,
@@ -158,14 +158,14 @@ const SpeechQueue = {
         this.speaking = true;
 
         const text = this.q.shift();
-
         const msg = new SpeechSynthesisUtterance(text);
+
         msg.lang = "pl-PL";
         msg.rate = 0.95;
 
         msg.onend = () => {
             this.beep();
-            setTimeout(()=>this.speakNext(), 400);
+            setTimeout(()=>this.speakNext(), 300);
         };
 
         speechSynthesis.speak(msg);
@@ -177,10 +177,9 @@ const SpeechQueue = {
     }
 };
 
-
-/* KOLOR */
+/* POGODA */
 function getClass(c){
-    if(!c.temp) return "fog";
+    if(!c || !c.temp) return "fog";
     if(c.code >= 1000 && c.code < 1100) return "sunny";
     if(c.text && c.text.toLowerCase().includes("rain")) return "rain";
     if(c.text && c.text.toLowerCase().includes("thunder")) return "storm";
@@ -188,9 +187,9 @@ function getClass(c){
     return "cloudy";
 }
 
-
-/* MARKERY */
+/* KROPKI */
 function draw(cities){
+
     document.querySelectorAll(".marker").forEach(e=>e.remove());
 
     cities.forEach(c=>{
@@ -201,8 +200,8 @@ function draw(cities){
         const d = document.createElement("div");
         d.className = "marker " + getClass(c);
 
-        d.style.left = p.x+"px";
-        d.style.top = p.y+"px";
+        d.style.left = p.x + "px";
+        d.style.top = p.y + "px";
 
         if(c.icon){
             const img = document.createElement("img");
@@ -214,7 +213,6 @@ function draw(cities){
     });
 }
 
-
 /* TICKER */
 function ticker(cities){
 
@@ -225,24 +223,17 @@ function ticker(cities){
     document.querySelector("#ticker span").textContent = text;
 }
 
-
-/* TTS SEQUENTIAL CITY READER */
+/* TTS SEQ */
 function speakCities(cities){
 
     cities.forEach(c=>{
         if(!c.name) return;
 
-        const t =
-            `${c.name}. ` +
-            `Temperatura ${c.temp ?? "brak danych"} stopni. ` +
-            `Wilgotność ${c.humidity ?? "brak danych"} procent. ` +
-            `Wiatr ${c.wind ?? "brak danych"} kilometrów na godzinę. ` +
-            `Ciśnienie ${c.pressure ?? "brak danych"} hektopaskali.`;
-
-        SpeechQueue.add(t);
+        SpeechQueue.add(
+            `${c.name}. temperatura ${c.temp ?? "brak"} stopni. wilgotność ${c.humidity ?? "brak"} procent. wiatr ${c.wind ?? "brak"} kilometrów na godzinę. ciśnienie ${c.pressure ?? "brak"} hektopaskali.`
+        );
     });
 }
-
 
 /* EAS */
 function eas(cities){
@@ -258,8 +249,7 @@ function eas(cities){
     }
 }
 
-
-/* MAIN */
+/* LOAD */
 function load(){
     fetch("/data")
     .then(r=>r.json())
@@ -268,14 +258,13 @@ function load(){
         ticker(d.cities);
         eas(d.cities);
 
-        // 🔥 TTS tylko co update
         SpeechQueue.q = [];
         speechSynthesis.cancel();
         speakCities(d.cities);
     });
 }
 
-setInterval(load, 60000); // 1 min update (stabilnie)
+setInterval(load, 60000);
 load();
 
 </script>
