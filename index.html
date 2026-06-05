@@ -2,7 +2,7 @@
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<title>Weather TV</title>
+<title>Weather TV - Radio Ranking Mode</title>
 
 <style>
 body {
@@ -13,60 +13,57 @@ body {
     overflow:hidden;
 }
 
-#tv {
-    width:1000px;
-    height:1000px;
-    margin:auto;
-    position:relative;
+/* ===== LISTA ===== */
+#list {
+    padding:20px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    height: calc(100vh - 60px);
+    overflow:auto;
 }
 
-#map {
-    width:100%;
-    height:100%;
-    position:absolute;
-    object-fit:cover;
-}
-
-/* MARKERY */
-.marker {
-    position:absolute;
-    width:18px;
-    height:18px;
-    border-radius:50%;
-    transform:translate(-50%,-50%);
-    border:2px solid white;
-    transition:all 0.4s ease;
+.city {
     display:flex;
     align-items:center;
-    justify-content:center;
+    justify-content:space-between;
+    padding:10px;
+    background:#111;
+    border-left:6px solid gray;
+    transition:0.3s;
 }
 
-.marker img {
-    width:16px;
-    height:16px;
+.city:hover {
+    background:#1a1a1a;
 }
 
-.marker.sunny { background:#00ff00; }
-.marker.cloudy { background:#a0a0a0; }
-.marker.rain { background:#0099ff; }
-.marker.storm { background:#ff0000; }
-.marker.fog { background:#bbbbbb; }
+.city img {
+    width:32px;
+    height:32px;
+}
 
-/* TICKER */
+/* ===== COLORS ===== */
+.sunny { border-left-color:#00ff00; }
+.cloudy { border-left-color:#999; }
+.rain { border-left-color:#0099ff; }
+.storm { border-left-color:#ff0000; }
+.fog { border-left-color:#666; }
+
+/* ===== TICKER ===== */
 #ticker {
     position:fixed;
     bottom:0;
     width:100%;
     background:black;
     color:lime;
-    overflow:hidden;
     white-space:nowrap;
+    overflow:hidden;
 }
 
 #ticker span {
     display:inline-block;
     padding-left:100%;
-    animation:scroll 80s linear infinite;
+    animation:scroll 60s linear infinite;
 }
 
 @keyframes scroll {
@@ -74,71 +71,93 @@ body {
     100% { transform:translateX(-100%); }
 }
 
-/* EAS */
-#eas {
-    position:fixed;
-    top:0; left:0;
-    width:100%; height:100%;
-    display:none;
-    justify-content:center;
-    align-items:center;
-    background:red;
-    font-size:40px;
-    z-index:999;
+/* ===== TOP BAR ===== */
+#top {
+    padding:10px;
+    background:#000;
+    border-bottom:1px solid #222;
+    color:lime;
+    font-size:14px;
 }
 
-/* SLIDER */
-#sliderBox {
+/* ===== EAS ===== */
+#eas {
     position:fixed;
-    top:10px;
-    left:10px;
-    background:#111;
-    padding:10px;
-    z-index:9999;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background:red;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    font-size:40px;
+    z-index:999;
 }
 </style>
 </head>
 
 <body>
 
-<div id="sliderBox">
-X offset <input id="xoff" type="range" min="-100" max="100" value="0"><br>
-Y offset <input id="yoff" type="range" min="-100" max="100" value="0">
-</div>
+<div id="top">WEATHER TV - RADIO RANKING SYSTEM</div>
 
-<div id="tv">
-    <img id="map" src="map.png">
-</div>
+<div id="list"></div>
 
 <div id="ticker"><span>LOADING...</span></div>
 <div id="eas"></div>
 
 <script>
 
-/* MAPA */
-const MAP = {
-    latMin:49.0,
-    latMax:55.2,
-    lonMin:14.0,
-    lonMax:24.5
-};
+/* =========================
+   GLOBAL DATA
+========================= */
+let GLOBAL = [];
 
-function geo(lat, lon){
-    const m = document.getElementById("map");
+/* =========================
+   WEATHER SCORE
+========================= */
+function weatherScore(c){
 
-    const xoff = +document.getElementById("xoff").value;
-    const yoff = +document.getElementById("yoff").value;
+    if(!c || !c.temp) return 999;
 
-    return {
-        x: ((lon-MAP.lonMin)/(MAP.lonMax-MAP.lonMin))*m.clientWidth + xoff,
-        y: ((MAP.latMax-lat)/(MAP.latMax-MAP.latMin))*m.clientHeight + yoff
-    };
+    let score = 0;
+
+    if(c.text){
+        const t = c.text.toLowerCase();
+        if(t.includes("thunder")) score += 80;
+        if(t.includes("rain")) score += 60;
+        if(t.includes("drizzle")) score += 40;
+        if(t.includes("fog")) score += 70;
+        if(t.includes("mist")) score += 50;
+    }
+
+    score += (c.cloud ?? 0) * 0.3;
+    score += (c.wind ?? 0) * 0.8;
+
+    if(c.vis != null){
+        score += (10 - c.vis) * 5;
+    }
+
+    return score;
 }
 
-/* TTS */
+/* =========================
+   COLORS
+========================= */
+function cls(c){
+    if(!c || !c.temp) return "fog";
+    if(c.text && c.text.toLowerCase().includes("thunder")) return "storm";
+    if(c.text && c.text.toLowerCase().includes("rain")) return "rain";
+    if(c.cloud > 70) return "cloudy";
+    return "sunny";
+}
+
+/* =========================
+   TTS ENGINE
+========================= */
 const SpeechQueue = {
     q: [],
-    speaking: false,
+    speaking:false,
 
     beep(){
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -146,10 +165,10 @@ const SpeechQueue = {
         o.frequency.value = 440;
         o.connect(ctx.destination);
         o.start();
-        setTimeout(()=>o.stop(), 120);
+        setTimeout(()=>o.stop(),120);
     },
 
-    speakNext(){
+    next(){
         if(this.q.length === 0){
             this.speaking = false;
             return;
@@ -157,63 +176,76 @@ const SpeechQueue = {
 
         this.speaking = true;
 
-        const text = this.q.shift();
-        const msg = new SpeechSynthesisUtterance(text);
-
+        const msg = new SpeechSynthesisUtterance(this.q.shift());
         msg.lang = "pl-PL";
         msg.rate = 0.95;
 
         msg.onend = () => {
             this.beep();
-            setTimeout(()=>this.speakNext(), 300);
+            setTimeout(()=>this.next(),400);
         };
 
         speechSynthesis.speak(msg);
     },
 
-    add(text){
-        this.q.push(text);
-        if(!this.speaking) this.speakNext();
+    add(t){
+        this.q.push(t);
+        if(!this.speaking) this.next();
     }
 };
 
-/* POGODA */
-function getClass(c){
-    if(!c || !c.temp) return "fog";
-    if(c.code >= 1000 && c.code < 1100) return "sunny";
-    if(c.text && c.text.toLowerCase().includes("rain")) return "rain";
-    if(c.text && c.text.toLowerCase().includes("thunder")) return "storm";
-    if(c.cloud > 70) return "cloudy";
-    return "cloudy";
-}
-
-/* KROPKI */
+/* =========================
+   DRAW LIST (RANKING)
+========================= */
 function draw(cities){
 
-    document.querySelectorAll(".marker").forEach(e=>e.remove());
+    const list = document.getElementById("list");
+    list.innerHTML = "";
 
-    cities.forEach(c=>{
-        if(!c.lat || !c.lon) return;
+    const clean = cities.filter(c =>
+        c && c.name && c.temp != null
+    );
 
-        const p = geo(c.lat,c.lon);
+    const sorted = [...clean].sort((a,b)=>
+        weatherScore(b) - weatherScore(a)
+    );
 
-        const d = document.createElement("div");
-        d.className = "marker " + getClass(c);
+    sorted.forEach((c,i)=>{
 
-        d.style.left = p.x + "px";
-        d.style.top = p.y + "px";
+        const div = document.createElement("div");
+        div.className = "city " + cls(c);
 
-        if(c.icon){
-            const img = document.createElement("img");
-            img.src = c.icon;
-            d.appendChild(img);
-        }
+        const danger =
+            weatherScore(c) > 120 ? "🔴 EKSTREMALNA"
+            : weatherScore(c) > 80 ? "🟠 ZŁA"
+            : weatherScore(c) > 50 ? "🟡 ŚREDNIA"
+            : "🟢 DOBRA";
 
-        document.getElementById("tv").appendChild(d);
+        div.innerHTML = `
+            <div>
+                <b>#${i+1} ${c.name}</b> ${danger}<br>
+                ${c.text ?? ""}
+            </div>
+
+            <div>
+                🌡 ${c.temp}°C<br>
+                💨 ${c.wind ?? "?"} km/h<br>
+                💧 ${c.humidity ?? "?"}%<br>
+                ⬇ ${c.pressure ?? "?"} hPa
+            </div>
+
+            <div>
+                ${c.icon ? `<img src="${c.icon}">` : ""}
+            </div>
+        `;
+
+        list.appendChild(div);
     });
 }
 
-/* TICKER */
+/* =========================
+   TICKER
+========================= */
 function ticker(cities){
 
     const text = cities.map(c=>{
@@ -223,49 +255,48 @@ function ticker(cities){
     document.querySelector("#ticker span").textContent = text;
 }
 
-/* TTS SEQ */
-function speakCities(cities){
+/* =========================
+   RADIO TTS REPORT
+========================= */
+function speakReport(){
 
-    cities.forEach(c=>{
-        if(!c.name) return;
+    const sorted = [...GLOBAL]
+        .filter(c=>c && c.temp != null)
+        .sort((a,b)=>weatherScore(b)-weatherScore(a));
 
+    sorted.forEach(c=>{
         SpeechQueue.add(
-            `${c.name}. temperatura ${c.temp ?? "brak"} stopni. wilgotność ${c.humidity ?? "brak"} procent. wiatr ${c.wind ?? "brak"} kilometrów na godzinę. ciśnienie ${c.pressure ?? "brak"} hektopaskali.`
+            `${c.name}. temperatura ${c.temp}. wilgotność ${c.humidity}. wiatr ${c.wind}. ciśnienie ${c.pressure}.`
         );
     });
 }
 
-/* EAS */
-function eas(cities){
-    const active = cities.some(c=>c.alert==="EAS");
-    const box = document.getElementById("eas");
+/* =========================
+   AUTO RADIO (10 MIN)
+========================= */
+setInterval(()=>{
+    speechSynthesis.cancel();
+    SpeechQueue.q = [];
+    speakReport();
+}, 600000);
 
-    if(active){
-        box.style.display="flex";
-        box.innerText="⚠ EAS ACTIVE ⚠";
-        speechSynthesis.cancel();
-    } else {
-        box.style.display="none";
-    }
-}
-
-/* LOAD */
+/* =========================
+   LOAD DATA
+========================= */
 function load(){
     fetch("/data")
     .then(r=>r.json())
     .then(d=>{
-        draw(d.cities);
-        ticker(d.cities);
-        eas(d.cities);
-
-        SpeechQueue.q = [];
-        speechSynthesis.cancel();
-        speakCities(d.cities);
+        GLOBAL = d.cities;
+        draw(GLOBAL);
+        ticker(GLOBAL);
     });
 }
 
 setInterval(load, 60000);
 load();
+
+setTimeout(speakReport, 5000);
 
 </script>
 
