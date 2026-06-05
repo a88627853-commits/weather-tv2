@@ -23,7 +23,6 @@ NAMES = ["Zakopane","Przemyśl","Bielsko-Biała","Kraków","Katowice",
          "Gdańsk","Gdynia"]
 
 CACHE = []
-CACHE_TIME = 0
 CACHE_TTL = 60
 
 EAS_ACTIVE = False
@@ -31,7 +30,7 @@ EAS_END = 0
 
 
 # =========================
-# FIX: bezpieczne pobieranie
+# FIXED FETCH (ONLY HOURLY + DAILY STYLE DATA)
 # =========================
 def fetch_city(i):
     url = "https://api.open-meteo.com/v1/forecast"
@@ -39,7 +38,9 @@ def fetch_city(i):
     params = {
         "latitude": LAT[i],
         "longitude": LON[i],
-        "current": [
+        "timezone": "Europe/Warsaw",
+
+        "hourly": [
             "temperature_2m",
             "relative_humidity_2m",
             "apparent_temperature",
@@ -48,8 +49,15 @@ def fetch_city(i):
             "weather_code",
             "visibility",
             "pressure_msl",
-            "surface_pressure",
-            "is_day"
+            "surface_pressure"
+        ],
+
+        "daily": [
+            "temperature_2m_max",
+            "temperature_2m_min",
+            "sunrise",
+            "sunset",
+            "weather_code"
         ]
     }
 
@@ -61,7 +69,8 @@ def fetch_city(i):
             "name": NAMES[i],
             "lat": LAT[i],
             "lon": LON[i],
-            "current": data.get("current", {}) or {},
+            "hourly": data.get("hourly", {}),
+            "daily": data.get("daily", {}),
             "alert": "EAS" if EAS_ACTIVE else "OK"
         }
 
@@ -70,37 +79,31 @@ def fetch_city(i):
             "name": NAMES[i],
             "lat": LAT[i],
             "lon": LON[i],
-            "current": {},
+            "hourly": {},
+            "daily": {},
             "alert": "OK"
         }
 
 
 # =========================
-# FIX: build cache (NA START)
+# CACHE
 # =========================
 def build_cache():
     global CACHE
     CACHE = [fetch_city(i) for i in range(len(NAMES))]
 
 
-# =========================
-# REFRESH LOOP
-# =========================
 def update_cache():
-    global CACHE_TIME
-
     while True:
         build_cache()
-        CACHE_TIME = time.time()
         time.sleep(CACHE_TTL)
 
 
 # =========================
-# EAS LOOP
+# EAS
 # =========================
 def eas_loop():
     global EAS_ACTIVE
-
     while True:
         if EAS_ACTIVE and time.time() > EAS_END:
             EAS_ACTIVE = False
@@ -124,28 +127,25 @@ def map():
 def data():
     return jsonify({
         "eas": EAS_ACTIVE,
-        "cities": CACHE if CACHE else []
+        "cities": CACHE
     })
 
 
 @app.route("/esp32/eas_test", methods=["POST"])
 def eas():
     global EAS_ACTIVE, EAS_END
-
     EAS_ACTIVE = True
     EAS_END = time.time() + 60
-
     return {"ok": True}
 
 
 # =========================
-# FIX: START (ważne dla Render)
+# START
 # =========================
 build_cache()
 
 threading.Thread(target=update_cache, daemon=True).start()
 threading.Thread(target=eas_loop, daemon=True).start()
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
