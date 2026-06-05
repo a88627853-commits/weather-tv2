@@ -5,87 +5,71 @@
 <title>Weather TV</title>
 
 <style>
-body {
-    margin: 0;
-    background: black;
-    color: white;
-    font-family: Arial;
-    overflow: hidden;
-}
+body { margin:0; background:black; font-family:Arial; overflow:hidden; color:white; }
 
 #tv {
-    width: 960px;
-    height: 960px;
-    margin: auto;
-    position: relative;
+    width:960px;
+    height:960px;
+    margin:auto;
+    position:relative;
 }
 
 #map {
-    width: 960px;
-    height: 960px;
-    position: relative;
+    width:100%;
+    height:100%;
+    position:absolute;
+    object-fit:cover;
+    opacity:0.85;
 }
 
-#map img {
-    width: 100%;
-    height: 100%;
+.marker {
+    position:absolute;
+    width:10px;
+    height:10px;
+    border-radius:50%;
+    transform:translate(-50%,-50%);
 }
 
-.city-dot {
-    position: absolute;
-    color: red;
-    font-size: 10px;
-    transform: translate(-50%, -50%);
-}
+.marker.RED { background:red; }
+.marker.YELLOW { background:orange; }
+.marker.LOW { background:lime; }
 
 #ticker {
-    position: fixed;
-    bottom: 0;
-    width: 100%;
-    background: black;
-    color: lime;
-    white-space: nowrap;
+    position:fixed;
+    bottom:0;
+    width:100%;
+    background:black;
+    color:lime;
 }
 
 #ticker span {
-    display: inline-block;
-    padding-left: 100%;
-    animation: scroll 25s linear infinite;
+    display:inline-block;
+    padding-left:100%;
+    animation:scroll 25s linear infinite;
 }
 
 @keyframes scroll {
-    0% { transform: translateX(0); }
-    100% { transform: translateX(-100%); }
+    0%{transform:translateX(0);}
+    100%{transform:translateX(-100%);}
 }
 
 #eas {
-    position: fixed;
-    width: 100%;
-    height: 100%;
-    background: red;
-    display: none;
-    justify-content: center;
-    align-items: center;
-    font-size: 40px;
-    z-index: 9999;
+    position:fixed;
+    top:0; left:0;
+    width:100%; height:100%;
+    display:none;
+    justify-content:center;
+    align-items:center;
+    font-size:40px;
+    text-align:center;
+    background:red;
+    z-index:999;
 }
-
-.weatherFX {
-    position: fixed;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    opacity: 0.35;
-}
-
-.rain { background: url("https://i.imgur.com/4M7IWwP.gif"); }
-.snow { background: url("https://i.imgur.com/r4Q5Q0y.gif"); }
-.storm { background: url("https://i.imgur.com/3ZQZQ0v.gif"); }
 
 button {
-    position: fixed;
-    top: 10px;
-    right: 10px;
+    position:fixed;
+    top:10px;
+    right:10px;
 }
 </style>
 </head>
@@ -95,152 +79,77 @@ button {
 <button onclick="document.documentElement.requestFullscreen()">FULLSCREEN</button>
 
 <div id="tv">
-
-    <div id="map">
-        <img src="/map.png">
-        <div id="dots"></div>
-    </div>
-
+    <img id="map" src="map.png">
 </div>
 
 <div id="ticker"><span>LOADING...</span></div>
+
 <div id="eas"></div>
-<div class="weatherFX" id="fx"></div>
 
 <script>
 
-/* ---------------- TTS ---------------- */
+const MAP = {
+    latMin:49.0,
+    latMax:55.2,
+    lonMin:14.0,
+    lonMax:24.5
+};
 
-function speakCity(city, cb) {
-
-    let c = city.current || {};
-    let h = city.hourly || {};
-    let d = city.daily || {};
-
-    let text =
-`${city.name}.
-Raport pogodowy.
-
-Temperatura ${c.temperature_2m}.
-Wilgotność ${c.relative_humidity_2m}.
-Odczuwalna ${c.apparent_temperature}.
-
-Wiatr ${h.wind_speed_10m?.[0]} m/s, porywy ${h.wind_gusts_10m?.[0]}.
-Kierunek ${h.wind_direction_10m?.[0]} stopni.
-
-Opady ${h.precipitation?.[0]} mm, prawdopodobieństwo ${h.precipitation_probability?.[0]}%.
-
-Śnieg ${h.snow_depth?.[0]}.
-Widoczność ${h.visibility?.[0]}.
-
-Zachmurzenie ${c.cloud_cover}.
-Ciśnienie ${c.pressure_msl}.
-
-UV ${h.uv_index?.[0]}.
-UV clear sky ${h.uv_index_clear_sky?.[0]}.
-
-Nasłonecznienie ${h.sunshine_duration?.[0]}.
-
-Dziennie:
-Max ${d.temperature_2m_max?.[0]}.
-Min ${d.temperature_2m_min?.[0]}.
-
-Wschód i zachód słońca zapisane.`;
-
-    let msg = new SpeechSynthesisUtterance(text);
-    msg.lang = "pl-PL";
-
-    msg.onend = () => setTimeout(cb, 10000);
-
-    speechSynthesis.speak(msg);
+function geoToXY(lat,lon){
+    const m=document.getElementById("map");
+    return {
+        x:((lon-MAP.lonMin)/(MAP.lonMax-MAP.lonMin))*m.clientWidth,
+        y:((MAP.latMax-lat)/(MAP.latMax-MAP.latMin))*m.clientHeight
+    };
 }
 
-function loopCities(list, i=0){
-    if(i>=list.length){
-        setTimeout(()=>loopCities(list,0),5000);
-        return;
-    }
-
-    speakCity(list[i], ()=>loopCities(list,i+1));
-}
-
-/* ---------------- MAPA ---------------- */
-
-function renderDots(data){
-    let html="";
-
-    data.cities.forEach(c=>{
-        html += `<div class="city-dot" style="left:${c.x*960}px; top:${c.y*960}px;">●</div>`;
-    });
-
-    document.getElementById("dots").innerHTML = html;
-}
-
-/* ---------------- FX ---------------- */
-
-function weatherFX(cities){
-    let fx = document.getElementById("fx");
-
-    let storm=false, rain=false, snow=false;
+function draw(cities){
+    document.querySelectorAll(".marker").forEach(m=>m.remove());
 
     cities.forEach(c=>{
-        let w = c.current?.weather_code || 0;
-        let p = c.hourly?.precipitation_probability?.[0] || 0;
+        if(!c.lat||!c.lon) return;
 
-        if(w>=95) storm=true;
-        if(p>70) rain=true;
-        if(w>=71 && w<=77) snow=true;
+        let p=geoToXY(c.lat,c.lon);
+
+        let m=document.createElement("div");
+        m.className="marker "+c.alert;
+
+        m.style.left=p.x+"px";
+        m.style.top=p.y+"px";
+
+        document.getElementById("tv").appendChild(m);
     });
-
-    fx.className="weatherFX";
-
-    if(storm) fx.classList.add("storm");
-    else if(rain) fx.classList.add("rain");
-    else if(snow) fx.classList.add("snow");
 }
 
-/* ---------------- EAS ---------------- */
-
-function pollEAS(){
-    fetch("/eas")
+function eas(){
+    fetch("/eas/global")
     .then(r=>r.json())
     .then(e=>{
-        if(e.active){
-            let box=document.getElementById("eas");
+        let box=document.getElementById("eas");
+
+        if(e.level!="GREEN"){
             box.style.display="flex";
-            box.innerText=e.message;
-
-            let msg=new SpeechSynthesisUtterance(e.message);
-            speechSynthesis.speak(msg);
-
-            setTimeout(()=>{
-                box.style.display="none";
-                fetch("/eas/reset",{method:"POST"});
-            },8000);
+            box.innerText="ALERT\n"+e.cities.join(", ");
+        } else {
+            box.style.display="none";
         }
     });
 }
-
-setInterval(pollEAS,2000);
-
-/* ---------------- LOAD ---------------- */
 
 function load(){
     fetch("/data")
     .then(r=>r.json())
     .then(d=>{
-
-        renderDots(d);
-        weatherFX(d.cities);
+        eas();
 
         document.querySelector("#ticker span").innerText =
-            d.cities.map(c=>`${c.name}: ${c.current?.temperature_2m ?? "?"}°C`).join(" | ");
+            d.cities.map(c=>c.name+": "+c.current.temperature_2m+"°C").join(" | ");
 
-        loopCities(d.cities);
+        draw(d.cities);
     });
 }
 
-setInterval(load,120000);
+setInterval(load,30000);
 load();
 
 </script>
