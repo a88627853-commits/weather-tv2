@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, send_from_directory
 import requests
 
 app = Flask(__name__)
@@ -20,8 +20,39 @@ NAMES = ["Zakopane","Przemyśl","Bielsko-Biała","Kraków","Katowice",
          "Augustów","Suwałki","Świnoujście","Kołobrzeg","Koszalin",
          "Gdańsk","Gdynia"]
 
-EAS_ACTIVE = False
-EAS_MESSAGE = ""
+
+def calculate_alert(current, hourly):
+    score = 0
+
+    wind = hourly.get("wind_speed_10m", [0])[0]
+    rain = hourly.get("precipitation_probability", [0])[0]
+    snow = hourly.get("snow_depth", [0])[0]
+    code = current.get("weather_code", 0)
+
+    if wind > 20:
+        score += 2
+    elif wind > 12:
+        score += 1
+
+    if rain > 70:
+        score += 2
+    elif rain > 40:
+        score += 1
+
+    if snow > 5:
+        score += 2
+
+    if code >= 95:
+        score += 3
+
+    if score >= 6:
+        return "EXTREME"
+    elif score >= 4:
+        return "HIGH"
+    elif score >= 2:
+        return "MEDIUM"
+    return "LOW"
+
 
 def get_city(i):
     url = "https://api.open-meteo.com/v1/forecast"
@@ -29,7 +60,6 @@ def get_city(i):
     params = {
         "latitude": LAT[i],
         "longitude": LON[i],
-
         "current": [
             "temperature_2m",
             "relative_humidity_2m",
@@ -42,72 +72,82 @@ def get_city(i):
             "wind_speed_10m",
             "visibility"
         ],
-
         "hourly": [
-            "temperature_2m",
-            "relative_humidity_2m",
-            "apparent_temperature",
+            "wind_speed_10m",
             "precipitation_probability",
             "precipitation",
             "snow_depth",
-            "wind_speed_10m",
-            "wind_speed_80m",
-            "wind_direction_10m",
-            "wind_gusts_10m",
-            "visibility",
-            "cloud_cover",
-            "weather_code",
-            "pressure_msl",
             "uv_index",
-            "uv_index_clear_sky",
-            "sunshine_duration"
+            "cloud_cover"
         ],
-
         "daily": [
-            "weather_code",
             "temperature_2m_max",
             "temperature_2m_min",
             "sunrise",
             "sunset"
         ],
-
         "timezone": "Europe/Warsaw"
     }
 
-    r = requests.get(url, params=params, timeout=8).json()
+    r = requests.get(url, params=params, timeout=5).json()
+
+    current = r.get("current", {})
+    hourly = r.get("hourly", {})
 
     return {
         "name": NAMES[i],
-        "current": r.get("current", {}),
-        "hourly": r.get("hourly", {}),
-        "daily": r.get("daily", {})
+        "current": current,
+        "hourly": hourly,
+        "daily": r.get("daily", {}),
+        "alert": calculate_alert(current, hourly)
     }
+
 
 @app.route("/")
 def home():
-    return render_template("index.html")
+    return send_from_directory(".", "index.html")
+
 
 @app.route("/data")
 def data():
-    return jsonify({"cities": [get_city(i) for i in range(len(NAMES))]})
+    return jsonify({
+        "cities": [get_city(i) for i in range(len(NAMES))]
+    })
+
 
 @app.route("/eas/test", methods=["POST"])
 def eas_test():
-    global EAS_ACTIVE, EAS_MESSAGE
-    EAS_ACTIVE = True
-    EAS_MESSAGE = "⚠ EAS TEST SIGNAL FROM ESP32 ⚠"
-    return jsonify({"ok": True})
+    print("🔥 ESP32 EAS TRIGGER")
+    return jsonify({"status": "OK"})
 
-@app.route("/eas")
-def eas():
-    return jsonify({"active": EAS_ACTIVE, "message": EAS_MESSAGE})
 
-@app.route("/eas/reset", methods=["POST"])
-def reset():
-    global EAS_ACTIVE, EAS_MESSAGE
-    EAS_ACTIVE = False
-    EAS_MESSAGE = ""
-    return jsonify({"ok": True})
+@app.route("/eas/global")
+def eas_global():
+    cities = [get_city(i) for i in range(len(NAMES))]
+
+    extreme = [c for c in cities if c["alert"] == "EXTREME"]
+    high = [c for c in cities if c["alert"] == "HIGH"]
+
+    if extreme:
+        return jsonify({
+            "level": "RED",
+            "message": "🚨 ALERT KRYTYCZNY",
+            "cities": [c["name"] for c in extreme]
+        })
+
+    if high:
+        return jsonify({
+            "level": "YELLOW",
+            "message": "⚠️ OSTRZEŻENIE POGODOWE",
+            "cities": [c["name"] for c in high]
+        })
+
+    return jsonify({
+        "level": "GREEN",
+        "message": "Brak zagrożeń",
+        "cities": []
+    })
+
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0")
