@@ -30,20 +30,27 @@ body {
 /* MARKERY */
 .marker {
     position:absolute;
-    width:14px;
-    height:14px;
+    width:18px;
+    height:18px;
     border-radius:50%;
     transform:translate(-50%,-50%);
     border:2px solid white;
     transition:all 0.5s ease;
-    background-size:cover;
+    display:flex;
+    align-items:center;
+    justify-content:center;
 }
 
-.marker.sunny { background-color:#00ff00; }
-.marker.cloudy { background-color:#999999; }
-.marker.rain { background-color:#0099ff; }
-.marker.storm { background-color:#ff0000; }
-.marker.fog { background-color:#bbbbbb; }
+.marker img {
+    width:16px;
+    height:16px;
+}
+
+.marker.sunny { background:#00ff00; }
+.marker.cloudy { background:#a0a0a0; }
+.marker.rain { background:#0099ff; }
+.marker.storm { background:#ff0000; }
+.marker.fog { background:#bbbbbb; }
 
 /* TICKER */
 #ticker {
@@ -70,10 +77,8 @@ body {
 /* EAS */
 #eas {
     position:fixed;
-    top:0;
-    left:0;
-    width:100%;
-    height:100%;
+    top:0; left:0;
+    width:100%; height:100%;
     display:none;
     justify-content:center;
     align-items:center;
@@ -82,7 +87,7 @@ body {
     z-index:999;
 }
 
-/* SUWAK */
+/* SLIDER */
 #sliderBox {
     position:fixed;
     top:10px;
@@ -97,8 +102,8 @@ body {
 <body>
 
 <div id="sliderBox">
-    X <input id="xoff" type="range" min="-100" max="100" value="0"><br>
-    Y <input id="yoff" type="range" min="-100" max="100" value="0">
+X offset <input id="xoff" type="range" min="-100" max="100" value="0"><br>
+Y offset <input id="yoff" type="range" min="-100" max="100" value="0">
 </div>
 
 <div id="tv">
@@ -110,7 +115,7 @@ body {
 
 <script>
 
-/* MAPA + OFFSET */
+/* MAPA */
 const MAP = {
     latMin:49.0,
     latMax:55.2,
@@ -121,8 +126,8 @@ const MAP = {
 function geo(lat, lon){
     const m = document.getElementById("map");
 
-    const xoff = parseInt(document.getElementById("xoff").value);
-    const yoff = parseInt(document.getElementById("yoff").value);
+    const xoff = +document.getElementById("xoff").value;
+    const yoff = +document.getElementById("yoff").value;
 
     return {
         x: ((lon-MAP.lonMin)/(MAP.lonMax-MAP.lonMin))*m.clientWidth + xoff,
@@ -130,36 +135,59 @@ function geo(lat, lon){
     };
 }
 
-/* TTS */
-const TTS = {
-    last:"",
+/* TTS QUEUE (NIE GLITCHUJE) */
+const SpeechQueue = {
+    q: [],
+    speaking: false,
 
-    speak(text){
-        if(!("speechSynthesis" in window)) return;
-        if(text === this.last) return;
+    beep(){
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ctx.createOscillator();
+        o.frequency.value = 440;
+        o.connect(ctx.destination);
+        o.start();
+        setTimeout(()=>o.stop(), 120);
+    },
 
-        this.last = text;
-        speechSynthesis.cancel();
+    speakNext(){
+        if(this.q.length === 0){
+            this.speaking = false;
+            return;
+        }
+
+        this.speaking = true;
+
+        const text = this.q.shift();
 
         const msg = new SpeechSynthesisUtterance(text);
         msg.lang = "pl-PL";
-        msg.rate = 1;
+        msg.rate = 0.95;
+
+        msg.onend = () => {
+            this.beep();
+            setTimeout(()=>this.speakNext(), 400);
+        };
 
         speechSynthesis.speak(msg);
+    },
+
+    add(text){
+        this.q.push(text);
+        if(!this.speaking) this.speakNext();
     }
 };
 
+
 /* KOLOR */
 function getClass(c){
-    if(!c) return "fog";
-
-    if(c.code === 1000) return "sunny";
+    if(!c.temp) return "fog";
+    if(c.code >= 1000 && c.code < 1100) return "sunny";
     if(c.text && c.text.toLowerCase().includes("rain")) return "rain";
     if(c.text && c.text.toLowerCase().includes("thunder")) return "storm";
     if(c.cloud > 70) return "cloudy";
-
     return "cloudy";
 }
+
 
 /* MARKERY */
 function draw(cities){
@@ -168,25 +196,26 @@ function draw(cities){
     cities.forEach(c=>{
         if(!c.lat || !c.lon) return;
 
-        let p = geo(c.lat,c.lon);
+        const p = geo(c.lat,c.lon);
 
-        let d = document.createElement("div");
+        const d = document.createElement("div");
         d.className = "marker " + getClass(c);
 
-        d.style.left = p.x + "px";
-        d.style.top = p.y + "px";
+        d.style.left = p.x+"px";
+        d.style.top = p.y+"px";
 
         if(c.icon){
-            d.style.backgroundImage = `url(${c.icon})`;
+            const img = document.createElement("img");
+            img.src = c.icon;
+            d.appendChild(img);
         }
 
         document.getElementById("tv").appendChild(d);
     });
 }
 
-/* TICKER */
-let last = "";
 
+/* TICKER */
 function ticker(cities){
 
     const text = cities.map(c=>{
@@ -194,17 +223,31 @@ function ticker(cities){
     }).join(" || ");
 
     document.querySelector("#ticker span").textContent = text;
-
-    if(text !== last){
-        TTS.speak("Aktualizacja pogody");
-        last = text;
-    }
 }
+
+
+/* TTS SEQUENTIAL CITY READER */
+function speakCities(cities){
+
+    cities.forEach(c=>{
+        if(!c.name) return;
+
+        const t =
+            `${c.name}. ` +
+            `Temperatura ${c.temp ?? "brak danych"} stopni. ` +
+            `Wilgotność ${c.humidity ?? "brak danych"} procent. ` +
+            `Wiatr ${c.wind ?? "brak danych"} kilometrów na godzinę. ` +
+            `Ciśnienie ${c.pressure ?? "brak danych"} hektopaskali.`;
+
+        SpeechQueue.add(t);
+    });
+}
+
 
 /* EAS */
 function eas(cities){
-    let active = cities.some(c=>c.alert==="EAS");
-    let box = document.getElementById("eas");
+    const active = cities.some(c=>c.alert==="EAS");
+    const box = document.getElementById("eas");
 
     if(active){
         box.style.display="flex";
@@ -215,7 +258,8 @@ function eas(cities){
     }
 }
 
-/* LOOP */
+
+/* MAIN */
 function load(){
     fetch("/data")
     .then(r=>r.json())
@@ -223,10 +267,15 @@ function load(){
         draw(d.cities);
         ticker(d.cities);
         eas(d.cities);
+
+        // 🔥 TTS tylko co update
+        SpeechQueue.q = [];
+        speechSynthesis.cancel();
+        speakCities(d.cities);
     });
 }
 
-setInterval(load, 10000);
+setInterval(load, 60000); // 1 min update (stabilnie)
 load();
 
 </script>
