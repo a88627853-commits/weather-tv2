@@ -5,7 +5,7 @@
 <title>Weather TV</title>
 
 <style>
-body { margin:0; background:black; color:white; font-family:Arial; overflow:hidden; }
+body { margin:0; background:black; color:white; font-family:Arial; }
 
 #tv {
     width:1000px;
@@ -15,11 +15,9 @@ body { margin:0; background:black; color:white; font-family:Arial; overflow:hidd
 }
 
 #map {
-    width:1000px;
-    height:1000px;
+    width:100%;
+    height:100%;
     position:absolute;
-    left:0;
-    top:0;
 }
 
 .marker {
@@ -28,10 +26,8 @@ body { margin:0; background:black; color:white; font-family:Arial; overflow:hidd
     height:10px;
     border-radius:50%;
     transform:translate(-50%,-50%);
+    background:lime;
 }
-
-.marker.OK { background:lime; }
-.marker.EAS { background:red; }
 
 #ticker {
     position:fixed;
@@ -39,31 +35,19 @@ body { margin:0; background:black; color:white; font-family:Arial; overflow:hidd
     width:100%;
     background:black;
     color:lime;
-    overflow:hidden;
     white-space:nowrap;
+    overflow:hidden;
 }
 
 #ticker span {
     display:inline-block;
     padding-left:100%;
-    animation:scroll 120s linear infinite;
+    animation:scroll 60s linear infinite;
 }
 
 @keyframes scroll {
     0% { transform:translateX(0); }
     100% { transform:translateX(-100%); }
-}
-
-#eas {
-    position:fixed;
-    top:0; left:0;
-    width:100%; height:100%;
-    display:none;
-    justify-content:center;
-    align-items:center;
-    background:red;
-    font-size:40px;
-    z-index:999;
 }
 </style>
 </head>
@@ -71,124 +55,36 @@ body { margin:0; background:black; color:white; font-family:Arial; overflow:hidd
 <body>
 
 <div id="tv">
-    <img id="map" src="map.png?v=1">
+    <img id="map" src="map.png">
 </div>
 
 <div id="ticker"><span>LOADING...</span></div>
-<div id="eas"></div>
 
 <script>
 
-/* =========================
-   MAPA
-========================= */
-const MAP = {
-    latMin:49.0,
-    latMax:55.2,
-    lonMin:14.0,
-    lonMax:24.5
-};
-
-function geo(lat, lon){
-    const m = document.getElementById("map");
-    return {
-        x: ((lon-MAP.lonMin)/(MAP.lonMax-MAP.lonMin))*m.clientWidth,
-        y: ((MAP.latMax-lat)/(MAP.latMax-MAP.latMin))*m.clientHeight
-    };
-}
-
-/* =========================
-   TTS (WBUDOWANY SYSTEM)
-========================= */
-const TTS = {
-    speak(text){
-        if(!("speechSynthesis" in window)) return;
-
-        speechSynthesis.cancel();
-
-        const msg = new SpeechSynthesisUtterance(text);
-        msg.lang = "pl-PL";
-        msg.rate = 1;
-
-        speechSynthesis.speak(msg);
-    }
-};
-
-/* =========================
-   MAPA MARKERY
-========================= */
 function draw(cities){
     document.querySelectorAll(".marker").forEach(e=>e.remove());
-
-    cities.forEach(c=>{
-        if(!c.lat || !c.lon) return;
-
-        let p = geo(c.lat,c.lon);
-
-        let d = document.createElement("div");
-        d.className = "marker " + (c.alert==="EAS"?"EAS":"OK");
-
-        d.style.left = p.x+"px";
-        d.style.top = p.y+"px";
-
-        document.getElementById("tv").appendChild(d);
-    });
 }
 
-/* =========================
-   TICKER + TTS TOGETHER
-========================= */
 function ticker(cities){
 
-    const safe = (v, unit="") =>
-        (v === undefined || v === null) ? "?" : v + unit;
+    const safe = (v, u="") => (v ?? "?") + u;
 
     const text = cities.map(c => {
-
-        const cur = (c.current && Object.keys(c.current).length)
-            ? c.current
-            : {};
-
-        return `${c.name} | ` +
-            `Temp: ${safe(cur.temperature_2m,"°C")} | ` +
-            `Wilg: ${safe(cur.relative_humidity_2m,"%")} | ` +
-            `Odczuwalna: ${safe(cur.apparent_temperature,"°C")} | ` +
-            `Wiatr: ${safe(cur.wind_speed_10m,"m/s")} | ` +
-            `Chmury: ${safe(cur.cloud_cover,"%")} | ` +
-            `Widoczność: ${safe(cur.visibility,"m")} | ` +
-            `Ciśnienie: ${safe(cur.pressure_msl,"hPa")} | ` +
-            `Dzień: ${safe(cur.is_day)}`;
+        return `${c.name}: ${safe(c.temp,"°C")} | ` +
+               `Wiatr: ${safe(c.wind,"km/h")} | ` +
+               `Wilg: ${safe(c.humidity,"%")} | ` +
+               `Ciśn: ${safe(c.pressure,"hPa")}`;
     }).join(" || ");
 
     document.querySelector("#ticker span").textContent = text;
 }
 
-/* =========================
-   EAS
-========================= */
-function eas(cities){
-    let active = cities.some(c=>c.alert==="EAS");
-    let box = document.getElementById("eas");
-
-    if(active){
-        box.style.display="flex";
-        box.innerText="⚠ EAS ACTIVE ⚠";
-        speechSynthesis.cancel();
-    } else {
-        box.style.display="none";
-    }
-}
-
-/* =========================
-   MAIN LOOP
-========================= */
 function load(){
     fetch("/data")
     .then(r=>r.json())
     .then(d=>{
         ticker(d.cities);
-        draw(d.cities);
-        eas(d.cities);
     });
 }
 
