@@ -5,15 +5,8 @@
 <title>Weather TV</title>
 
 <style>
-body {
-    margin:0;
-    background:black;
-    color:white;
-    font-family:Arial;
-    overflow:hidden;
-}
+body { margin:0; background:black; color:white; font-family:Arial; overflow:hidden; }
 
-/* 🔥 TV FRAME */
 #tv {
     width:960px;
     height:960px;
@@ -21,31 +14,24 @@ body {
     position:relative;
 }
 
-/* 🗺️ MAPA (NAPRAWIONA W 100%) */
 #map {
     width:100%;
     height:100%;
     position:absolute;
-    top:0;
-    left:0;
-    z-index:0;
     object-fit:cover;
 }
 
-/* 📍 MARKERY */
 .marker {
     position:absolute;
     width:10px;
     height:10px;
     border-radius:50%;
     transform:translate(-50%,-50%);
-    z-index:2;
 }
 
 .marker.OK { background:lime; }
 .marker.EAS { background:red; }
 
-/* 📺 TICKER */
 #ticker {
     position:fixed;
     bottom:0;
@@ -54,7 +40,6 @@ body {
     color:lime;
     overflow:hidden;
     white-space:nowrap;
-    z-index:10;
 }
 
 #ticker span {
@@ -68,20 +53,15 @@ body {
     100% { transform:translateX(-100%); }
 }
 
-/* 🚨 EAS OVERLAY */
 #eas {
     position:fixed;
-    top:0;
-    left:0;
-    width:100%;
-    height:100%;
+    top:0; left:0;
+    width:100%; height:100%;
     display:none;
     justify-content:center;
     align-items:center;
     background:red;
-    color:white;
     font-size:40px;
-    text-align:center;
     z-index:999;
 }
 </style>
@@ -90,8 +70,7 @@ body {
 <body>
 
 <div id="tv">
-    <!-- 🗺️ MAPA W KOŃCU DZIAŁA -->
-    <img id="map" src="map.png">
+    <img id="map" src="map.png?v=2">
 </div>
 
 <div id="ticker"><span>LOADING...</span></div>
@@ -100,9 +79,9 @@ body {
 
 <script>
 
-/* ======================
-   MAPA GEO
-====================== */
+let EAS = false;
+let loop = null;
+
 const MAP = {
     latMin:49.0,
     latMax:55.2,
@@ -110,86 +89,80 @@ const MAP = {
     lonMax:24.5
 };
 
-function geoToXY(lat, lon){
+function geo(lat, lon){
     const m = document.getElementById("map");
 
     return {
-        x: ((lon - MAP.lonMin) / (MAP.lonMax - MAP.lonMin)) * m.clientWidth,
-        y: ((MAP.latMax - lat) / (MAP.latMax - MAP.latMin)) * m.clientHeight
+        x: ((lon-MAP.lonMin)/(MAP.lonMax-MAP.lonMin))*m.clientWidth,
+        y: ((MAP.latMax-lat)/(MAP.latMax-MAP.latMin))*m.clientHeight
     };
 }
 
-/* ======================
-   MAP DRAW
-====================== */
 function draw(cities){
-    document.querySelectorAll(".marker").forEach(m => m.remove());
+    document.querySelectorAll(".marker").forEach(e=>e.remove());
 
-    cities.forEach(c => {
-        if(!c.lat || !c.lon) return;
+    cities.forEach(c=>{
+        if(!c.lat||!c.lon) return;
 
-        let p = geoToXY(c.lat, c.lon);
+        let p = geo(c.lat,c.lon);
 
-        let el = document.createElement("div");
+        let d = document.createElement("div");
+        d.className = "marker " + (c.alert==="EAS"?"EAS":"OK");
 
-        el.className = "marker " + (c.alert === "EAS" ? "EAS" : "OK");
+        d.style.left = p.x+"px";
+        d.style.top = p.y+"px";
 
-        el.style.left = p.x + "px";
-        el.style.top = p.y + "px";
-
-        document.getElementById("tv").appendChild(el);
+        document.getElementById("tv").appendChild(d);
     });
 }
 
-/* ======================
-   TICKER (1 LINIA)
-====================== */
-function updateTicker(cities){
+function ticker(cities){
     document.querySelector("#ticker span").innerText =
-        cities.map(c => {
+        cities.map(c=>{
             let cur = c.current || {};
-
-            return `${c.name} Temp: ${cur.temperature_2m ?? "brak"}°C | ` +
-                   `Wilg: ${cur.relative_humidity_2m ?? "brak"}% | ` +
-                   `Wiatr: ${cur.wind_speed_10m ?? "brak"} m/s | ` +
-                   `Ciśn: ${cur.pressure_msl ?? "brak"} hPa`;
+            return `${c.name} ${cur.temperature_2m??"?"}°C | ${cur.wind_speed_10m??"?"} m/s`;
         }).join(" | ");
 }
 
-/* ======================
-   EAS SYSTEM
-====================== */
-function eas(cities){
-    let easActive = cities.some(c => c.alert === "EAS");
-
+function setEAS(state){
     let box = document.getElementById("eas");
 
-    if(easActive){
+    if(state){
+        EAS = true;
         box.style.display = "flex";
-        box.innerText = "⚠ EAS ALERT ⚠\nWARUNKI EKSTREMALNE";
+        box.innerText = "⚠ EAS ACTIVE ⚠";
+
+        clearInterval(loop);
+        speechSynthesis.cancel();
     } else {
+        EAS = false;
         box.style.display = "none";
+        start();
     }
 }
 
-/* ======================
-   MAIN LOOP
-====================== */
 function load(){
     fetch("/data")
-    .then(r => r.json())
-    .then(d => {
-
+    .then(r=>r.json())
+    .then(d=>{
         let cities = d.cities;
 
-        updateTicker(cities);
-        draw(cities);
-        eas(cities);
+        if(d.eas && !EAS) setEAS(true);
+        if(!d.eas && EAS) setEAS(false);
+
+        if(!EAS){
+            ticker(cities);
+            draw(cities);
+        }
     });
 }
 
-setInterval(load, 15000);
-load();
+function start(){
+    loop = setInterval(load, 15000);
+    load();
+}
+
+start();
 
 </script>
 
