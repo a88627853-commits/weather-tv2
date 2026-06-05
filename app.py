@@ -4,7 +4,7 @@ import time
 
 app = Flask(__name__)
 
-API_KEY = "e20abb7bb600400fb2c134205260506"  # backend only (nie dotykam 😄)
+API_KEY = "e20abb7bb600400fb2c134205260506"  # backend only
 
 CITIES = [
     "Zakopane","Przemyśl","Bielsko-Biała","Kraków","Katowice",
@@ -20,9 +20,6 @@ CACHE_TIME = 0
 CACHE_TTL = 60
 
 
-# =========================
-# WEATHER FETCH (STABILNY)
-# =========================
 def fetch_city(city):
     url = "https://api.weatherapi.com/v1/forecast.json"
 
@@ -50,7 +47,9 @@ def fetch_city(city):
                 "vis": None,
                 "text": None,
                 "icon": None,
-                "code": None
+                "code": -1,
+                "lat": None,
+                "lon": None
             }
 
         current = data.get("current") or {}
@@ -59,6 +58,8 @@ def fetch_city(city):
         icon = cond.get("icon")
         if icon and icon.startswith("//"):
             icon = "https:" + icon
+
+        location = data.get("location") or {}
 
         return {
             "name": city,
@@ -71,7 +72,9 @@ def fetch_city(city):
             "vis": current.get("vis_km"),
             "text": cond.get("text"),
             "icon": icon,
-            "code": cond.get("code")
+            "code": cond.get("code"),
+            "lat": location.get("lat"),
+            "lon": location.get("lon")
         }
 
     except Exception:
@@ -86,13 +89,12 @@ def fetch_city(city):
             "vis": None,
             "text": None,
             "icon": None,
-            "code": None
+            "code": -1,
+            "lat": None,
+            "lon": None
         }
 
 
-# =========================
-# CACHE (ANTI-LAG + RATE LIMIT SAFE)
-# =========================
 def get_data():
     global CACHE, CACHE_TIME
 
@@ -100,20 +102,15 @@ def get_data():
 
     if CACHE is None or (now - CACHE_TIME) > CACHE_TTL:
         new_cache = []
-
         for c in CITIES:
             new_cache.append(fetch_city(c))
-            time.sleep(0.12)  # chroni API przed limitem
-
+            time.sleep(0.12)
         CACHE = new_cache
         CACHE_TIME = now
 
     return CACHE
 
 
-# =========================
-# ROUTES
-# =========================
 @app.route("/")
 def home():
     return send_from_directory(".", "index.html")
@@ -129,8 +126,5 @@ def static_files(path):
     return send_from_directory(".", path)
 
 
-# =========================
-# START
-# =========================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
