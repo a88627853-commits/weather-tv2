@@ -139,19 +139,27 @@ function draw(cities){
 ========================= */
 function ticker(cities){
 
-    let text = cities.map(c=>{
-        let cur = c.current;
+    const safe = (v, unit="") =>
+        (v === undefined || v === null) ? "?" : v + unit;
 
-        return `${c.name} temperatura ${cur.temperature_2m} stopni, ` +
-               `wilgotność ${cur.relative_humidity_2m} procent, ` +
-               `wiatr ${cur.wind_speed_10m} metrów na sekundę, ` +
-               `ciśnienie ${cur.pressure_msl} hPa`;
-    }).join(" | ");
+    const text = cities.map(c => {
 
-    document.querySelector("#ticker span").innerText = text;
+        const cur = (c.current && Object.keys(c.current).length)
+            ? c.current
+            : {};
 
-    // 🔥 JEDNO WYWOŁANIE TTS
-    TTS.speak(text);
+        return `${c.name} | ` +
+            `Temp: ${safe(cur.temperature_2m,"°C")} | ` +
+            `Wilg: ${safe(cur.relative_humidity_2m,"%")} | ` +
+            `Odczuwalna: ${safe(cur.apparent_temperature,"°C")} | ` +
+            `Wiatr: ${safe(cur.wind_speed_10m,"m/s")} | ` +
+            `Chmury: ${safe(cur.cloud_cover,"%")} | ` +
+            `Widoczność: ${safe(cur.visibility,"m")} | ` +
+            `Ciśnienie: ${safe(cur.pressure_msl,"hPa")} | ` +
+            `Dzień: ${safe(cur.is_day)}`;
+    }).join(" || ");
+
+    document.querySelector("#ticker span").textContent = text;
 }
 
 /* =========================
