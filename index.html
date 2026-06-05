@@ -2,7 +2,7 @@
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<title>Weather TV - Radio Ranking Mode</title>
+<title>Weather TV - Final Commit</title>
 
 <style>
 body {
@@ -33,16 +33,14 @@ body {
     transition:0.3s;
 }
 
-.city:hover {
-    background:#1a1a1a;
-}
+.city:hover { background:#1a1a1a; }
 
 .city img {
     width:32px;
     height:32px;
 }
 
-/* ===== COLORS ===== */
+/* ===== ALERT COLORS ===== */
 .sunny { border-left-color:#00ff00; }
 .cloudy { border-left-color:#999; }
 .rain { border-left-color:#0099ff; }
@@ -71,7 +69,7 @@ body {
     100% { transform:translateX(-100%); }
 }
 
-/* ===== TOP BAR ===== */
+/* ===== TOP ===== */
 #top {
     padding:10px;
     background:#000;
@@ -83,8 +81,7 @@ body {
 /* ===== EAS ===== */
 #eas {
     position:fixed;
-    top:0;
-    left:0;
+    top:0; left:0;
     width:100%;
     height:100%;
     background:red;
@@ -99,22 +96,17 @@ body {
 
 <body>
 
-<div id="top">WEATHER TV - RADIO RANKING SYSTEM</div>
-
+<div id="top">WEATHER TV FINAL SYSTEM</div>
 <div id="list"></div>
-
 <div id="ticker"><span>LOADING...</span></div>
 <div id="eas"></div>
 
 <script>
 
-/* =========================
-   GLOBAL DATA
-========================= */
 let GLOBAL = [];
 
 /* =========================
-   WEATHER SCORE
+   WEATHER SCORE (FINAL FIX)
 ========================= */
 function weatherScore(c){
 
@@ -123,109 +115,67 @@ function weatherScore(c){
     let score = 0;
     const t = (c.text || "").toLowerCase();
 
-    /* =========================
-       🔴 EKSTREMALNE WARUNKI
-    ========================= */
+    // 🌩 burze
     if(t.includes("thunder")) score += 120;
-    else if(t.includes("heavy rain") || t.includes("downpour")) score += 100;
 
-    /* =========================
-       🟠 SILNE OPADY
-    ========================= */
+    // 🌧 deszcz
+    else if(t.includes("heavy rain") || t.includes("downpour")) score += 100;
     else if(t.includes("rain")) score += 55;
     else if(t.includes("drizzle")) score += 15;
 
-    /* =========================
-       🌫 MGŁA / WIDOCZNOŚĆ
-    ========================= */
-    if(t.includes("fog")) score += 70;
-    if(t.includes("mist")) score += 50;
+    // 🌫 MGŁA (POPRAWIONA LOGIKA)
+    if(t.includes("fog") || t.includes("mist")){
 
-    /* =========================
-       ☁ CHMURY (łagodnie)
-    ========================= */
+        if(c.vis != null && c.vis < 2){
+            score += 80;
+        }
+        else if(c.vis != null && c.vis < 5){
+            score += 40;
+        }
+        else {
+            score += 5; // 25km = prawie zero wpływu
+        }
+    }
+
+    // ☁ chmury
     score += (c.cloud ?? 0) * 0.15;
 
-    /* =========================
-       💨 WIATR (realistycznie)
-    ========================= */
+    // 💨 wiatr
     score += (c.wind ?? 0) * 0.4;
 
-    /* =========================
-       👀 WIDOCZNOŚĆ (mały wpływ)
-    ========================= */
+    // 👀 widoczność
     if(c.vis != null){
-        if(c.vis < 2) score += 60;
-        else if(c.vis < 5) score += 30;
+        if(c.vis < 2) score += 50;
+        else if(c.vis < 5) score += 25;
     }
 
     return score;
 }
 
 /* =========================
-   COLORS
+   COLOR CLASS
 ========================= */
 function cls(c){
     if(!c || !c.temp) return "fog";
-    if(c.text && c.text.toLowerCase().includes("thunder")) return "storm";
-    if(c.text && c.text.toLowerCase().includes("rain")) return "rain";
+    const t = (c.text || "").toLowerCase();
+
+    if(t.includes("thunder")) return "storm";
+    if(t.includes("rain")) return "rain";
+    if(t.includes("fog") || t.includes("mist")) return "fog";
     if(c.cloud > 70) return "cloudy";
+
     return "sunny";
 }
 
 /* =========================
-   TTS ENGINE
-========================= */
-const SpeechQueue = {
-    q: [],
-    speaking:false,
-
-    beep(){
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const o = ctx.createOscillator();
-        o.frequency.value = 440;
-        o.connect(ctx.destination);
-        o.start();
-        setTimeout(()=>o.stop(),120);
-    },
-
-    next(){
-        if(this.q.length === 0){
-            this.speaking = false;
-            return;
-        }
-
-        this.speaking = true;
-
-        const msg = new SpeechSynthesisUtterance(this.q.shift());
-        msg.lang = "pl-PL";
-        msg.rate = 0.95;
-
-        msg.onend = () => {
-            this.beep();
-            setTimeout(()=>this.next(),400);
-        };
-
-        speechSynthesis.speak(msg);
-    },
-
-    add(t){
-        this.q.push(t);
-        if(!this.speaking) this.next();
-    }
-};
-
-/* =========================
-   DRAW LIST (RANKING)
+   DRAW RANKING
 ========================= */
 function draw(cities){
 
     const list = document.getElementById("list");
     list.innerHTML = "";
 
-    const clean = cities.filter(c =>
-        c && c.name && c.temp != null
-    );
+    const clean = cities.filter(c => c && c.name && c.temp != null);
 
     const sorted = [...clean].sort((a,b)=>
         weatherScore(b) - weatherScore(a)
@@ -277,31 +227,6 @@ function ticker(cities){
 }
 
 /* =========================
-   RADIO TTS REPORT
-========================= */
-function speakReport(){
-
-    const sorted = [...GLOBAL]
-        .filter(c=>c && c.temp != null)
-        .sort((a,b)=>weatherScore(b)-weatherScore(a));
-
-    sorted.forEach(c=>{
-        SpeechQueue.add(
-            `${c.name}. temperatura ${c.temp}. wilgotność ${c.humidity}. wiatr ${c.wind}. ciśnienie ${c.pressure}.`
-        );
-    });
-}
-
-/* =========================
-   AUTO RADIO (10 MIN)
-========================= */
-setInterval(()=>{
-    speechSynthesis.cancel();
-    SpeechQueue.q = [];
-    speakReport();
-}, 600000);
-
-/* =========================
    LOAD DATA
 ========================= */
 function load(){
@@ -309,6 +234,7 @@ function load(){
     .then(r=>r.json())
     .then(d=>{
         GLOBAL = d.cities;
+
         draw(GLOBAL);
         ticker(GLOBAL);
     });
@@ -316,8 +242,6 @@ function load(){
 
 setInterval(load, 60000);
 load();
-
-setTimeout(speakReport, 5000);
 
 </script>
 
