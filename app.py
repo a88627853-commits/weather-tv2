@@ -4,7 +4,7 @@ import time
 
 app = Flask(__name__)
 
-API_KEY = "e20abb7bb600400fb2c134205260506"  # 🔴 tylko backend
+API_KEY = "e20abb7bb600400fb2c134205260506" # 🔴 tylko backend
 
 CITIES = [
     "Zakopane","Przemyśl","Bielsko-Biała","Kraków","Katowice",
@@ -21,8 +21,7 @@ CACHE_TTL = 60
 
 
 def fetch_city(city):
-
-    url = "http://api.weatherapi.com/v1/forecast.json"
+    url = "https://api.weatherapi.com/v1/forecast.json"
 
     params = {
         "key": API_KEY,
@@ -34,15 +33,26 @@ def fetch_city(city):
 
     try:
         r = requests.get(url, params=params, timeout=10)
-
         data = r.json()
 
         if "error" in data:
-            print("BŁĄD:", city)
-            print(data["error"])
+            print("WeatherAPI ERROR:", city, data["error"])
+            return {
+                "name": city,
+                "temp": None,
+                "wind": None,
+                "humidity": None,
+                "pressure": None,
+                "cloud": None,
+                "feels": None,
+                "vis": None,
+                "text": None,
+                "icon": None,
+                "code": None
+            }
 
-        current = data.get("current", {})
-        condition = current.get("condition", {})
+        current = data.get("current") or {}
+        condition = current.get("condition") or {}
 
         return {
             "name": city,
@@ -53,14 +63,14 @@ def fetch_city(city):
             "cloud": current.get("cloud"),
             "feels": current.get("feelslike_c"),
             "vis": current.get("vis_km"),
+
             "text": condition.get("text"),
-            "icon": condition.get("icon"),
+            "icon": "https:" + condition.get("icon", "") if condition.get("icon") else None,
             "code": condition.get("code")
         }
 
     except Exception as e:
         print("EXCEPTION:", city, e)
-
         return {
             "name": city,
             "temp": None,
@@ -82,7 +92,11 @@ def get_data():
     now = time.time()
 
     if CACHE is None or (now - CACHE_TIME) > CACHE_TTL:
-        CACHE = [fetch_city(c) for c in CITIES]
+        new_cache = []
+        for c in CITIES:
+            new_cache.append(fetch_city(c))
+            time.sleep(0.15)  # anti-rate-limit
+        CACHE = new_cache
         CACHE_TIME = now
 
     return CACHE
@@ -95,9 +109,7 @@ def home():
 
 @app.route("/data")
 def data():
-    return jsonify({
-        "cities": get_data()
-    })
+    return jsonify({"cities": get_data()})
 
 
 @app.route("/<path:path>")
