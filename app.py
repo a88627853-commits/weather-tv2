@@ -1,5 +1,7 @@
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, request
 import requests
+import threading
+import time
 
 app = Flask(__name__)
 
@@ -20,6 +22,14 @@ NAMES = ["Zakopane","Przemyśl","Bielsko-Biała","Kraków","Katowice",
          "Augustów","Suwałki","Świnoujście","Kołobrzeg","Koszalin",
          "Gdańsk","Gdynia"]
 
+# 🔴 EAS STATE
+EAS_ACTIVE = False
+EAS_END_TIME = 0
+
+
+# =========================
+# WEATHER FETCH
+# =========================
 def get_city(i):
     url = "https://api.open-meteo.com/v1/forecast"
 
@@ -29,21 +39,24 @@ def get_city(i):
         "current": [
             "temperature_2m",
             "relative_humidity_2m",
+            "dew_point_2m",
             "apparent_temperature",
             "weather_code",
-            "cloud_cover",
             "pressure_msl",
-            "surface_pressure",
-            "is_day",
+            "cloud_cover",
             "wind_speed_10m",
-            "visibility"
+            "visibility",
+            "is_day"
         ],
         "hourly": [
             "wind_speed_10m",
             "wind_speed_80m",
             "wind_gusts_10m",
             "precipitation_probability",
-            "sunshine_duration"
+            "precipitation",
+            "snowfall",
+            "sunshine_duration",
+            "cape"
         ],
         "timezone": "Europe/Warsaw"
     }
@@ -58,10 +71,14 @@ def get_city(i):
         "lat": LAT[i],
         "lon": LON[i],
         "current": r.get("current", {}),
-        "hourly": r.get("hourly", {})
+        "hourly": r.get("hourly", {}),
+        "alert": "EAS" if EAS_ACTIVE else "OK"
     }
 
 
+# =========================
+# ROUTES
+# =========================
 @app.route("/")
 def home():
     return send_from_directory(".", "index.html")
@@ -69,8 +86,44 @@ def home():
 
 @app.route("/data")
 def data():
-    return jsonify({"cities": [get_city(i) for i in range(len(NAMES))]})
+    return jsonify({
+        "eas": EAS_ACTIVE,
+        "cities": [get_city(i) for i in range(len(NAMES))]
+    })
 
 
+# =========================
+# ESP32 TRIGGER (GPIO13 BUTTON)
+# =========================
+@app.route("/esp32/eas_test", methods=["POST"])
+def esp32_eas():
+    global EAS_ACTIVE, EAS_END_TIME
+
+    print("🔴 ESP32 BUTTON PRESSED → EAS TEST")
+
+    EAS_ACTIVE = True
+    EAS_END_TIME = time.time() + 60  # 1 minute
+
+    return jsonify({"status": "EAS TEST STARTED", "duration": 60})
+
+
+# =========================
+# AUTO TURN OFF EAS
+# =========================
+def eas_watcher():
+    global EAS_ACTIVE
+
+    while True:
+        if EAS_ACTIVE and time.time() > EAS_END_TIME:
+            print("🟢 EAS END")
+            EAS_ACTIVE = False
+
+        time.sleep(1)
+
+
+# =========================
+# START
+# =========================
 if __name__ == "__main__":
+    threading.Thread(target=eas_watcher, daemon=True).start()
     app.run(host="0.0.0.0", port=10000)
