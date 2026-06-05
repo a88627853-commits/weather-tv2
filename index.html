@@ -12,13 +12,18 @@ body { margin:0; background:black; color:white; font-family:Arial; overflow:hidd
     height:960px;
     margin:auto;
     position:relative;
+    overflow:hidden; /* 🔥 FIX: mapa + markery nie wychodzą */
 }
 
 #map {
     width:100%;
     height:100%;
     position:absolute;
+    top:0;
+    left:0;
     object-fit:cover;
+    display:block;
+    z-index:0;
 }
 
 .marker {
@@ -27,6 +32,7 @@ body { margin:0; background:black; color:white; font-family:Arial; overflow:hidd
     height:10px;
     border-radius:50%;
     transform:translate(-50%,-50%);
+    z-index:2;
 }
 
 .marker.OK { background:lime; }
@@ -81,6 +87,7 @@ body { margin:0; background:black; color:white; font-family:Arial; overflow:hidd
 
 let EAS = false;
 let loop = null;
+let mapReady = false;
 
 const MAP = {
     latMin:49.0,
@@ -89,41 +96,103 @@ const MAP = {
     lonMax:24.5
 };
 
+/* =========================
+   MAP INIT (🔥 FIX KLUCZOWY)
+========================= */
+window.addEventListener("load", () => {
+    const img = document.getElementById("map");
+
+    function enableMap(){
+        mapReady = true;
+        load();
+    }
+
+    img.onload = () => {
+        enableMap();
+    };
+
+    // fallback (bo cache / render czasem nie odpala onload)
+    setTimeout(enableMap, 1200);
+});
+
+/* =========================
+   GEO FIX (POPRAWNE WYMIARY)
+========================= */
 function geo(lat, lon){
     const m = document.getElementById("map");
 
+    let w = m.offsetWidth;
+    let h = m.offsetHeight;
+
     return {
-        x: ((lon-MAP.lonMin)/(MAP.lonMax-MAP.lonMin))*m.clientWidth,
-        y: ((MAP.latMax-lat)/(MAP.latMax-MAP.latMin))*m.clientHeight
+        x: ((lon - MAP.lonMin) / (MAP.lonMax - MAP.lonMin)) * w,
+        y: ((MAP.latMax - lat) / (MAP.latMax - MAP.latMin)) * h
     };
 }
 
+/* =========================
+   MAP DRAW (SAFE)
+========================= */
 function draw(cities){
-    document.querySelectorAll(".marker").forEach(e=>e.remove());
 
-    cities.forEach(c=>{
-        if(!c.lat||!c.lon) return;
+    if(!mapReady) return;
 
-        let p = geo(c.lat,c.lon);
+    document.querySelectorAll(".marker").forEach(e => e.remove());
+
+    cities.forEach(c => {
+        if(!c.lat || !c.lon) return;
+
+        let p = geo(c.lat, c.lon);
 
         let d = document.createElement("div");
-        d.className = "marker " + (c.alert==="EAS"?"EAS":"OK");
+        d.className = "marker " + (c.alert === "EAS" ? "EAS" : "OK");
 
-        d.style.left = p.x+"px";
-        d.style.top = p.y+"px";
+        d.style.left = p.x + "px";
+        d.style.top = p.y + "px";
 
         document.getElementById("tv").appendChild(d);
     });
 }
 
-function ticker(cities){
+/* =========================
+   TICKER (TWÓJ ORYGINAŁ)
+========================= */
+function updateTicker(cities){
     document.querySelector("#ticker span").innerText =
-        cities.map(c=>{
+        cities.map(c => {
             let cur = c.current || {};
-            return `${c.name} ${cur.temperature_2m??"?"}°C | ${cur.wind_speed_10m??"?"} m/s`;
-        }).join(" | ");
+            let h = c.hourly || {};
+
+            return `${c.name} | ` +
+                `Temp (2m): ${cur.temperature_2m ?? "brak"}°C | ` +
+                `Apparent: ${cur.apparent_temperature ?? "brak"}°C | ` +
+                `Humidity: ${cur.relative_humidity_2m ?? "brak"}% | ` +
+                `Precip Prob: ${h.precipitation_probability?.[0] ?? "brak"}% | ` +
+                `Precip: ${h.precipitation?.[0] ?? "brak"} mm | ` +
+                `Snow Depth: ${h.snow_depth?.[0] ?? "brak"} | ` +
+                `Wind 10m: ${cur.wind_speed_10m ?? "brak"} m/s | ` +
+                `Wind 80m: ${h.wind_speed_80m?.[0] ?? "brak"} m/s | ` +
+                `Wind Dir: ${h.wind_direction_10m?.[0] ?? "brak"}° | ` +
+                `Gusts: ${h.wind_gusts_10m?.[0] ?? "brak"} m/s | ` +
+                `Clouds: ${cur.cloud_cover ?? "brak"}% | ` +
+                `Pressure MSL: ${cur.pressure_msl ?? "brak"} hPa | ` +
+                `Surface Pressure: ${cur.surface_pressure ?? "brak"} hPa | ` +
+                `Visibility: ${cur.visibility ?? "brak"} m | ` +
+                `UV: ${h.uv_index?.[0] ?? "brak"} | ` +
+                `UV Clear: ${h.uv_index_clear_sky?.[0] ?? "brak"} | ` +
+                `Sunshine: ${h.sunshine_duration?.[0] ?? "brak"} | ` +
+                `Weather Code: ${cur.weather_code ?? "brak"} | ` +
+                `Is Day: ${cur.is_day ?? "brak"} | ` +
+                `Max Temp: ${h.temperature_2m_max?.[0] ?? "brak"}°C | ` +
+                `Min Temp: ${h.temperature_2m_min?.[0] ?? "brak"}°C | ` +
+                `Sunrise: ${h.sunrise?.[0] ?? "brak"} | ` +
+                `Sunset: ${h.sunset?.[0] ?? "brak"}`;
+        }).join(" || ");
 }
 
+/* =========================
+   EAS SYSTEM
+========================= */
 function setEAS(state){
     let box = document.getElementById("eas");
 
@@ -141,6 +210,9 @@ function setEAS(state){
     }
 }
 
+/* =========================
+   LOAD LOOP
+========================= */
 function load(){
     fetch("/data")
     .then(r=>r.json())
@@ -151,7 +223,7 @@ function load(){
         if(!d.eas && EAS) setEAS(false);
 
         if(!EAS){
-            ticker(cities);
+            updateTicker(cities);
             draw(cities);
         }
     });
