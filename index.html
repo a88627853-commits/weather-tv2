@@ -2,11 +2,18 @@
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<title>Weather TV FINAL</title>
+<title>Weather TV</title>
 
 <style>
-body { margin:0; background:black; font-family:Arial; color:white; overflow:hidden; }
+body {
+    margin:0;
+    background:black;
+    color:white;
+    font-family:Arial;
+    overflow:hidden;
+}
 
+/* 🔥 TV FRAME */
 #tv {
     width:960px;
     height:960px;
@@ -14,55 +21,67 @@ body { margin:0; background:black; font-family:Arial; color:white; overflow:hidd
     position:relative;
 }
 
+/* 🗺️ MAPA (NAPRAWIONA W 100%) */
 #map {
     width:100%;
     height:100%;
     position:absolute;
+    top:0;
+    left:0;
+    z-index:0;
     object-fit:cover;
-    opacity:0.85;
 }
 
+/* 📍 MARKERY */
 .marker {
     position:absolute;
     width:10px;
     height:10px;
     border-radius:50%;
     transform:translate(-50%,-50%);
+    z-index:2;
 }
 
-.marker.RED { background:red; }
-.marker.YELLOW { background:orange; }
-.marker.LOW { background:lime; }
+.marker.OK { background:lime; }
+.marker.EAS { background:red; }
 
+/* 📺 TICKER */
 #ticker {
     position:fixed;
     bottom:0;
     width:100%;
     background:black;
     color:lime;
+    overflow:hidden;
+    white-space:nowrap;
+    z-index:10;
 }
 
 #ticker span {
     display:inline-block;
     padding-left:100%;
-    animation:scroll 25s linear infinite;
+    animation:scroll 40s linear infinite;
 }
 
 @keyframes scroll {
-    0% {transform:translateX(0);}
-    100% {transform:translateX(-100%);}
+    0% { transform:translateX(0); }
+    100% { transform:translateX(-100%); }
 }
 
+/* 🚨 EAS OVERLAY */
 #eas {
     position:fixed;
-    top:0; left:0;
-    width:100%; height:100%;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
     display:none;
     justify-content:center;
     align-items:center;
+    background:red;
+    color:white;
     font-size:40px;
     text-align:center;
-    background:red;
     z-index:999;
 }
 </style>
@@ -70,9 +89,8 @@ body { margin:0; background:black; font-family:Arial; color:white; overflow:hidd
 
 <body>
 
-<button onclick="document.documentElement.requestFullscreen()">FULLSCREEN</button>
-
 <div id="tv">
+    <!-- 🗺️ MAPA W KOŃCU DZIAŁA -->
     <img id="map" src="map.png">
 </div>
 
@@ -82,6 +100,9 @@ body { margin:0; background:black; font-family:Arial; color:white; overflow:hidd
 
 <script>
 
+/* ======================
+   MAPA GEO
+====================== */
 const MAP = {
     latMin:49.0,
     latMax:55.2,
@@ -89,93 +110,85 @@ const MAP = {
     lonMax:24.5
 };
 
-function geoToXY(lat,lon){
-    const m=document.getElementById("map");
+function geoToXY(lat, lon){
+    const m = document.getElementById("map");
+
     return {
-        x:((lon-MAP.lonMin)/(MAP.lonMax-MAP.lonMin))*m.clientWidth,
-        y:((MAP.latMax-lat)/(MAP.latMax-MAP.latMin))*m.clientHeight
+        x: ((lon - MAP.lonMin) / (MAP.lonMax - MAP.lonMin)) * m.clientWidth,
+        y: ((MAP.latMax - lat) / (MAP.latMax - MAP.latMin)) * m.clientHeight
     };
 }
 
-function speak(text){
-    let msg = new SpeechSynthesisUtterance(text);
-    msg.lang = "pl-PL";
-    msg.rate = 1;
-    speechSynthesis.speak(msg);
-}
-
-function buildVoice(c){
-    let cur = c.current;
-    let h = c.hourly;
-
-    return `${c.name}. Temperatura ${cur.temperature_2m} stopni. Wilgotność ${cur.relative_humidity_2m} procent. Wiatr ${h.wind_speed_10m?.[0]} metrów na sekundę. Porywy ${h.wind_gusts_10m?.[0]}. Nasłonecznienie ${h.sunshine_duration?.[0]} sekund.`;
-}
-
-let cities=[];
-let i=0;
-
-function loopVoice(){
-    if(i>=cities.length){
-        i=0;
-        setTimeout(loopVoice,10000);
-        return;
-    }
-
-    let text = buildVoice(cities[i]);
-    speak(text);
-
-    i++;
-    setTimeout(loopVoice,10000);
-}
-
+/* ======================
+   MAP DRAW
+====================== */
 function draw(cities){
-    document.querySelectorAll(".marker").forEach(m=>m.remove());
+    document.querySelectorAll(".marker").forEach(m => m.remove());
 
-    cities.forEach(c=>{
-        let p=geoToXY(c.lat,c.lon);
+    cities.forEach(c => {
+        if(!c.lat || !c.lon) return;
 
-        let m=document.createElement("div");
-        m.className="marker "+c.alert;
-        m.style.left=p.x+"px";
-        m.style.top=p.y+"px";
+        let p = geoToXY(c.lat, c.lon);
 
-        document.getElementById("tv").appendChild(m);
+        let el = document.createElement("div");
+
+        el.className = "marker " + (c.alert === "EAS" ? "EAS" : "OK");
+
+        el.style.left = p.x + "px";
+        el.style.top = p.y + "px";
+
+        document.getElementById("tv").appendChild(el);
     });
 }
 
-function eas(){
-    fetch("/eas/global")
-    .then(r=>r.json())
-    .then(e=>{
-        let box=document.getElementById("eas");
+/* ======================
+   TICKER (1 LINIA)
+====================== */
+function updateTicker(cities){
+    document.querySelector("#ticker span").innerText =
+        cities.map(c => {
+            let cur = c.current || {};
 
-        if(e.level!="GREEN"){
-            box.style.display="flex";
-            box.innerText="ALERT\n"+e.cities.join(", ");
-        } else {
-            box.style.display="none";
-        }
-    });
+            return `${c.name} Temp: ${cur.temperature_2m ?? "brak"}°C | ` +
+                   `Wilg: ${cur.relative_humidity_2m ?? "brak"}% | ` +
+                   `Wiatr: ${cur.wind_speed_10m ?? "brak"} m/s | ` +
+                   `Ciśn: ${cur.pressure_msl ?? "brak"} hPa`;
+        }).join(" | ");
 }
 
+/* ======================
+   EAS SYSTEM
+====================== */
+function eas(cities){
+    let easActive = cities.some(c => c.alert === "EAS");
+
+    let box = document.getElementById("eas");
+
+    if(easActive){
+        box.style.display = "flex";
+        box.innerText = "⚠ EAS ALERT ⚠\nWARUNKI EKSTREMALNE";
+    } else {
+        box.style.display = "none";
+    }
+}
+
+/* ======================
+   MAIN LOOP
+====================== */
 function load(){
     fetch("/data")
-    .then(r=>r.json())
-    .then(d=>{
-        cities=d.cities;
+    .then(r => r.json())
+    .then(d => {
 
-        eas();
+        let cities = d.cities;
 
-        document.querySelector("#ticker span").innerText =
-            d.cities.map(c=>`${c.name}: ${c.current.temperature_2m}°C`).join(" | ");
-
-        draw(d.cities);
-
-        if(i===0) loopVoice();
+        updateTicker(cities);
+        draw(cities);
+        eas(cities);
     });
 }
 
-setInterval(load,30000);
+setInterval(load, 15000);
 load();
 
 </script>
