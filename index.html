@@ -5,8 +5,14 @@
 <title>Weather TV</title>
 
 <style>
-body { margin:0; background:black; color:white; font-family:Arial; }
+body {
+    margin:0;
+    background:black;
+    font-family:Arial;
+    overflow:hidden;
+}
 
+/* ===== TV SCREEN ===== */
 #tv {
     width:1000px;
     height:1000px;
@@ -14,12 +20,14 @@ body { margin:0; background:black; color:white; font-family:Arial; }
     position:relative;
 }
 
+/* ===== MAP ===== */
 #map {
     width:100%;
     height:100%;
     position:absolute;
 }
 
+/* ===== MARKERS ===== */
 .marker {
     position:absolute;
     width:10px;
@@ -29,6 +37,24 @@ body { margin:0; background:black; color:white; font-family:Arial; }
     background:lime;
 }
 
+/* ===== WEATHER OVERLAY ===== */
+#weatherLayer {
+    position:absolute;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    pointer-events:none;
+}
+
+#weatherLayer img {
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    opacity:0.30;
+}
+
+/* ===== TICKER ===== */
 #ticker {
     position:fixed;
     bottom:0;
@@ -42,12 +68,23 @@ body { margin:0; background:black; color:white; font-family:Arial; }
 #ticker span {
     display:inline-block;
     padding-left:100%;
-    animation:scroll 60s linear infinite;
+    animation:scroll 50s linear infinite;
 }
 
 @keyframes scroll {
     0% { transform:translateX(0); }
     100% { transform:translateX(-100%); }
+}
+
+/* ===== INFO PANEL (opcjonalnie) ===== */
+#panel {
+    position:absolute;
+    top:10px;
+    left:10px;
+    color:white;
+    font-size:14px;
+    background:rgba(0,0,0,0.5);
+    padding:10px;
 }
 </style>
 </head>
@@ -55,41 +92,114 @@ body { margin:0; background:black; color:white; font-family:Arial; }
 <body>
 
 <div id="tv">
+
     <img id="map" src="map.png">
+
+    <!-- WEATHER LAYER -->
+    <div id="weatherLayer">
+        <img id="weatherImg">
+    </div>
+
+    <!-- OPTIONAL PANEL -->
+    <div id="panel"></div>
+
 </div>
 
 <div id="ticker"><span>LOADING...</span></div>
 
 <script>
 
-function draw(cities){
-    document.querySelectorAll(".marker").forEach(e=>e.remove());
+/* =========================
+   DATA FETCH LAYER
+========================= */
+function loadData(){
+    fetch("/data")
+    .then(r => r.json())
+    .then(d => {
+        render(d.cities);
+    });
 }
 
+/* =========================
+   WEATHER ICON LOGIC
+========================= */
+function setWeather(cities){
+
+    const img = document.getElementById("weatherImg");
+
+    const c = cities[0]; // uproszczenie TV style
+
+    if(!c) return;
+
+    const code = c.code;
+
+    let src = "clouds.png";
+
+    if(code === 0){
+        src = "sun.png";
+    }
+    else if(code >= 1 && code <= 3){
+        src = "clouds.png";
+    }
+    else if(code >= 51 && code <= 67){
+        src = "rain.png";
+    }
+    else if(code >= 95){
+        src = "thunder.png";
+    }
+    else{
+        src = "moon.png";
+    }
+
+    img.src = src;
+}
+
+/* =========================
+   TICKER ENGINE
+========================= */
 function ticker(cities){
 
     const safe = (v, u="") => (v ?? "?") + u;
 
-    const text = cities.map(c => {
-        return `${c.name}: ${safe(c.temp,"°C")} | ` +
-               `Wiatr: ${safe(c.wind,"km/h")} | ` +
-               `Wilg: ${safe(c.humidity,"%")} | ` +
-               `Ciśn: ${safe(c.pressure,"hPa")}`;
-    }).join(" || ");
+    const text = cities.map(c =>
+        `${c.name}: ${safe(c.temp,"°C")} | ` +
+        `Wiatr: ${safe(c.wind,"km/h")} | ` +
+        `Wilg: ${safe(c.humidity,"%")} | ` +
+        `Ciśn: ${safe(c.pressure,"hPa")}`
+    ).join(" || ");
 
     document.querySelector("#ticker span").textContent = text;
 }
 
-function load(){
-    fetch("/data")
-    .then(r=>r.json())
-    .then(d=>{
-        ticker(d.cities);
-    });
+/* =========================
+   PANEL DEBUG
+========================= */
+function panel(cities){
+
+    const c = cities[0];
+
+    document.getElementById("panel").innerHTML =
+        `CITY: ${c?.name ?? "?"}<br>` +
+        `TEMP: ${c?.temp ?? "?"}°C<br>` +
+        `WIND: ${c?.wind ?? "?"} km/h<br>` +
+        `CODE: ${c?.code ?? "?"}`;
 }
 
-setInterval(load,15000);
-load();
+/* =========================
+   MAIN RENDER
+========================= */
+function render(cities){
+
+    ticker(cities);
+    setWeather(cities);
+    panel(cities);
+}
+
+/* =========================
+   LOOP
+========================= */
+setInterval(loadData, 10000);
+loadData();
 
 </script>
 
