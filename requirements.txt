@@ -1,11 +1,2 @@
 flask
-gunicorn
 requests
-openmeteo-requests
-requests-cache
-retry-requests
-pandas
-matplotlib
-basemap
-pillow
-numpy
