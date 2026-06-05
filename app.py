@@ -1,7 +1,6 @@
 from flask import Flask, jsonify, send_from_directory
 import requests
 import time
-import threading
 
 app = Flask(__name__)
 
@@ -22,16 +21,12 @@ NAMES = ["Zakopane","Przemyśl","Bielsko-Biała","Kraków","Katowice",
          "Augustów","Suwałki","Świnoujście","Kołobrzeg","Koszalin",
          "Gdańsk","Gdynia"]
 
-CACHE = []
+
+CACHE = None
+CACHE_TIME = 0
 CACHE_TTL = 60
 
-EAS_ACTIVE = False
-EAS_END = 0
 
-
-# =========================
-# FIXED FETCH (ONLY HOURLY + DAILY STYLE DATA)
-# =========================
 def fetch_city(i):
     url = "https://api.open-meteo.com/v1/forecast"
 
@@ -39,7 +34,6 @@ def fetch_city(i):
         "latitude": LAT[i],
         "longitude": LON[i],
         "timezone": "Europe/Warsaw",
-
         "hourly": [
             "temperature_2m",
             "relative_humidity_2m",
@@ -48,71 +42,47 @@ def fetch_city(i):
             "cloud_cover",
             "weather_code",
             "visibility",
-            "pressure_msl",
-            "surface_pressure"
-        ],
-
-        "daily": [
-            "temperature_2m_max",
-            "temperature_2m_min",
-            "sunrise",
-            "sunset",
-            "weather_code"
+            "pressure_msl"
         ]
     }
 
-    try:
-        r = requests.get(url, params=params, timeout=10)
-        data = r.json()
+    r = requests.get(url, params=params, timeout=10).json()
+    h = r.get("hourly", {})
 
-        return {
-            "name": NAMES[i],
-            "lat": LAT[i],
-            "lon": LON[i],
-            "hourly": data.get("hourly", {}),
-            "daily": data.get("daily", {}),
-            "alert": "EAS" if EAS_ACTIVE else "OK"
-        }
+    def first(arr):
+        return arr[0] if isinstance(arr, list) and len(arr) > 0 else None
 
-    except:
-        return {
-            "name": NAMES[i],
-            "lat": LAT[i],
-            "lon": LON[i],
-            "hourly": {},
-            "daily": {},
-            "alert": "OK"
-        }
+    return {
+        "name": NAMES[i],
+        "lat": LAT[i],
+        "lon": LON[i],
 
+        # 🔥 NORMALIZACJA (KLUCZ SYSTEMU)
+        "temp": first(h.get("temperature_2m")),
+        "feels": first(h.get("apparent_temperature")),
+        "humidity": first(h.get("relative_humidity_2m")),
+        "wind": first(h.get("wind_speed_10m")),
+        "cloud": first(h.get("cloud_cover")),
+        "vis": first(h.get("visibility")),
+        "pressure": first(h.get("pressure_msl")),
+        "code": first(h.get("weather_code")),
 
-# =========================
-# CACHE
-# =========================
-def build_cache():
-    global CACHE
-    CACHE = [fetch_city(i) for i in range(len(NAMES))]
+        "alert": "OK"
+    }
 
 
-def update_cache():
-    while True:
-        build_cache()
-        time.sleep(CACHE_TTL)
+def get_data():
+    global CACHE, CACHE_TIME
+
+    now = time.time()
+
+    if CACHE is None or (now - CACHE_TIME) > CACHE_TTL:
+        CACHE = [fetch_city(i) for i in range(len(NAMES))]
+        CACHE_TIME = now
+
+    return CACHE
 
 
-# =========================
-# EAS
-# =========================
-def eas_loop():
-    global EAS_ACTIVE
-    while True:
-        if EAS_ACTIVE and time.time() > EAS_END:
-            EAS_ACTIVE = False
-        time.sleep(1)
-
-
-# =========================
-# ROUTES
-# =========================
 @app.route("/")
 def home():
     return send_from_directory(".", "index.html")
@@ -123,29 +93,17 @@ def map():
     return send_from_directory(".", "map.png")
 
 
+@app.route("/<path:path>")
+def static_files(path):
+    return send_from_directory(".", path)
+
+
 @app.route("/data")
 def data():
     return jsonify({
-        "eas": EAS_ACTIVE,
-        "cities": CACHE
+        "cities": get_data()
     })
 
-
-@app.route("/esp32/eas_test", methods=["POST"])
-def eas():
-    global EAS_ACTIVE, EAS_END
-    EAS_ACTIVE = True
-    EAS_END = time.time() + 60
-    return {"ok": True}
-
-
-# =========================
-# START
-# =========================
-build_cache()
-
-threading.Thread(target=update_cache, daemon=True).start()
-threading.Thread(target=eas_loop, daemon=True).start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
