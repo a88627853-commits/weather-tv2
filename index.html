@@ -8,11 +8,12 @@
 body {
     margin:0;
     background:black;
+    color:white;
     font-family:Arial;
     overflow:hidden;
 }
 
-/* ===== TV SCREEN ===== */
+/* MAPA */
 #tv {
     width:1000px;
     height:1000px;
@@ -20,55 +21,58 @@ body {
     position:relative;
 }
 
-/* ===== MAP ===== */
 #map {
     width:100%;
     height:100%;
     position:absolute;
+    object-fit:cover;
 }
 
-/* ===== MARKERS ===== */
+/* MARKER */
 .marker {
     position:absolute;
     width:10px;
     height:10px;
     border-radius:50%;
     transform:translate(-50%,-50%);
-    background:lime;
+    z-index:5;
 }
 
-/* ===== WEATHER OVERLAY ===== */
-#weatherLayer {
+/* ICON */
+.wxicon {
     position:absolute;
-    top:0;
-    left:0;
-    width:100%;
-    height:100%;
+    width:32px;
+    height:32px;
+    transform:translate(-50%,-50%);
     pointer-events:none;
+    z-index:4;
 }
 
-#weatherLayer img {
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    opacity:0.30;
+/* PANEL SUWAKA */
+#calib {
+    position:fixed;
+    top:10px;
+    left:10px;
+    background:#111;
+    padding:10px;
+    border:1px solid #444;
+    z-index:999;
 }
 
-/* ===== TICKER ===== */
 #ticker {
     position:fixed;
     bottom:0;
     width:100%;
     background:black;
     color:lime;
-    white-space:nowrap;
     overflow:hidden;
+    white-space:nowrap;
 }
 
 #ticker span {
     display:inline-block;
     padding-left:100%;
-    animation:scroll 50s linear infinite;
+    animation:scroll 120s linear infinite;
 }
 
 @keyframes scroll {
@@ -76,130 +80,167 @@ body {
     100% { transform:translateX(-100%); }
 }
 
-/* ===== INFO PANEL (opcjonalnie) ===== */
-#panel {
-    position:absolute;
-    top:10px;
-    left:10px;
-    color:white;
-    font-size:14px;
-    background:rgba(0,0,0,0.5);
-    padding:10px;
+#eas {
+    position:fixed;
+    top:0; left:0;
+    width:100%; height:100%;
+    display:none;
+    justify-content:center;
+    align-items:center;
+    background:red;
+    font-size:40px;
+    z-index:999;
 }
 </style>
 </head>
 
 <body>
 
+<!-- SUWAK KALIBRACJI -->
+<div id="calib">
+    X offset <input type="range" id="xoff" min="-100" max="100" value="0"><br>
+    Y offset <input type="range" id="yoff" min="-100" max="100" value="0">
+</div>
+
 <div id="tv">
-
     <img id="map" src="map.png">
-
-    <!-- WEATHER LAYER -->
-    <div id="weatherLayer">
-        <img id="weatherImg">
-    </div>
-
-    <!-- OPTIONAL PANEL -->
-    <div id="panel"></div>
-
 </div>
 
 <div id="ticker"><span>LOADING...</span></div>
+<div id="eas"></div>
 
 <script>
 
-/* =========================
-   DATA FETCH LAYER
-========================= */
-function loadData(){
-    fetch("/data")
-    .then(r => r.json())
-    .then(d => {
-        render(d.cities);
+/* MAPA */
+const MAP = {
+    latMin:49.0,
+    latMax:55.2,
+    lonMin:14.0,
+    lonMax:24.5
+};
+
+function geo(lat, lon){
+
+    const m = document.getElementById("map");
+
+    let xoff = parseInt(document.getElementById("xoff").value);
+    let yoff = parseInt(document.getElementById("yoff").value);
+
+    return {
+        x: ((lon-MAP.lonMin)/(MAP.lonMax-MAP.lonMin))*m.clientWidth + xoff,
+        y: ((MAP.latMax-lat)/(MAP.latMax-MAP.latMin))*m.clientHeight + yoff
+    };
+}
+
+/* TTS */
+const TTS = {
+    last:0,
+    speak(t){
+        if(!("speechSynthesis" in window)) return;
+
+        if(Date.now()-this.last < 60000) return;
+
+        speechSynthesis.cancel();
+
+        let msg = new SpeechSynthesisUtterance(t);
+        msg.lang="pl-PL";
+        msg.rate=1;
+
+        speechSynthesis.speak(msg);
+
+        this.last = Date.now();
+    }
+};
+
+/* KOLORY */
+function getColor(code){
+    if(code===1000) return "yellow";
+    if([1003,1006,1009].includes(code)) return "gray";
+    if(code>=1063 && code<=1246) return "deepskyblue";
+    if(code>=1273) return "red";
+    return "lime";
+}
+
+/* RYSOWANIE */
+function draw(cities){
+
+    document.querySelectorAll(".marker,.wxicon").forEach(e=>e.remove());
+
+    cities.forEach(c=>{
+
+        if(!c.lat || !c.lon) return;
+
+        let p = geo(c.lat,c.lon);
+
+        let dot = document.createElement("div");
+        dot.className="marker";
+        dot.style.left=p.x+"px";
+        dot.style.top=p.y+"px";
+        dot.style.background=getColor(c.code);
+
+        document.getElementById("tv").appendChild(dot);
+
+        if(c.icon){
+            let img = document.createElement("img");
+            img.className="wxicon";
+            img.src = c.icon.startsWith("http") ? c.icon : "https:" + c.icon;
+
+            img.style.left=(p.x-30)+"px";
+            img.style.top=(p.y+30)+"px";
+
+            document.getElementById("tv").appendChild(img);
+        }
     });
 }
 
-/* =========================
-   WEATHER ICON LOGIC
-========================= */
-function setWeather(cities){
-
-    const img = document.getElementById("weatherImg");
-
-    const c = cities[0]; // uproszczenie TV style
-
-    if(!c) return;
-
-    const code = c.code;
-
-    let src = "clouds.png";
-
-    if(code === 0){
-        src = "sun.png";
-    }
-    else if(code >= 1 && code <= 3){
-        src = "clouds.png";
-    }
-    else if(code >= 51 && code <= 67){
-        src = "rain.png";
-    }
-    else if(code >= 95){
-        src = "thunder.png";
-    }
-    else{
-        src = "moon.png";
-    }
-
-    img.src = src;
-}
-
-/* =========================
-   TICKER ENGINE
-========================= */
+/* TICKER */
 function ticker(cities){
 
-    const safe = (v, u="") => (v ?? "?") + u;
+    const safe=v=>(v===null||v===undefined)?"?":v;
 
-    const text = cities.map(c =>
-        `${c.name}: ${safe(c.temp,"°C")} | ` +
-        `Wiatr: ${safe(c.wind,"km/h")} | ` +
-        `Wilg: ${safe(c.humidity,"%")} | ` +
-        `Ciśn: ${safe(c.pressure,"hPa")}`
-    ).join(" || ");
+    let text = cities.map(c=>{
 
-    document.querySelector("#ticker span").textContent = text;
+        return `${c.name} | ${safe(c.temp)}°C | ${safe(c.wind)}km/h | ${safe(c.humidity)}% | ${safe(c.pressure)}hPa`;
+
+    }).join(" || ");
+
+    document.querySelector("#ticker span").textContent=text;
+
+    TTS.speak(text);
 }
 
-/* =========================
-   PANEL DEBUG
-========================= */
-function panel(cities){
+/* EAS */
+function eas(cities){
+    let active = cities.some(c=>c.code>=1273);
 
-    const c = cities[0];
+    let box=document.getElementById("eas");
 
-    document.getElementById("panel").innerHTML =
-        `CITY: ${c?.name ?? "?"}<br>` +
-        `TEMP: ${c?.temp ?? "?"}°C<br>` +
-        `WIND: ${c?.wind ?? "?"} km/h<br>` +
-        `CODE: ${c?.code ?? "?"}`;
+    if(active){
+        box.style.display="flex";
+        box.innerText="⚠ EAS WEATHER ALERT ⚠";
+        speechSynthesis.cancel();
+    }else{
+        box.style.display="none";
+    }
 }
 
-/* =========================
-   MAIN RENDER
-========================= */
-function render(cities){
-
-    ticker(cities);
-    setWeather(cities);
-    panel(cities);
+/* LOOP */
+function load(){
+    fetch("/data")
+    .then(r=>r.json())
+    .then(d=>{
+        draw(d.cities);
+        ticker(d.cities);
+        eas(d.cities);
+    });
 }
 
-/* =========================
-   LOOP
-========================= */
-setInterval(loadData, 10000);
-loadData();
+load();
+setInterval(load,3600000);
+
+/* live update suwaków */
+document.getElementById("xoff").oninput=()=>load();
+document.getElementById("yoff").oninput=()=>load();
 
 </script>
 
