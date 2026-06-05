@@ -2,10 +2,10 @@
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<title>Weather TV</title>
+<title>Weather TV FINAL</title>
 
 <style>
-body { margin:0; background:black; font-family:Arial; overflow:hidden; color:white; }
+body { margin:0; background:black; font-family:Arial; color:white; overflow:hidden; }
 
 #tv {
     width:960px;
@@ -49,8 +49,8 @@ body { margin:0; background:black; font-family:Arial; overflow:hidden; color:whi
 }
 
 @keyframes scroll {
-    0%{transform:translateX(0);}
-    100%{transform:translateX(-100%);}
+    0% {transform:translateX(0);}
+    100% {transform:translateX(-100%);}
 }
 
 #eas {
@@ -64,12 +64,6 @@ body { margin:0; background:black; font-family:Arial; overflow:hidden; color:whi
     text-align:center;
     background:red;
     z-index:999;
-}
-
-button {
-    position:fixed;
-    top:10px;
-    right:10px;
 }
 </style>
 </head>
@@ -103,17 +97,45 @@ function geoToXY(lat,lon){
     };
 }
 
+function speak(text){
+    let msg = new SpeechSynthesisUtterance(text);
+    msg.lang = "pl-PL";
+    msg.rate = 1;
+    speechSynthesis.speak(msg);
+}
+
+function buildVoice(c){
+    let cur = c.current;
+    let h = c.hourly;
+
+    return `${c.name}. Temperatura ${cur.temperature_2m} stopni. Wilgotność ${cur.relative_humidity_2m} procent. Wiatr ${h.wind_speed_10m?.[0]} metrów na sekundę. Porywy ${h.wind_gusts_10m?.[0]}. Nasłonecznienie ${h.sunshine_duration?.[0]} sekund.`;
+}
+
+let cities=[];
+let i=0;
+
+function loopVoice(){
+    if(i>=cities.length){
+        i=0;
+        setTimeout(loopVoice,10000);
+        return;
+    }
+
+    let text = buildVoice(cities[i]);
+    speak(text);
+
+    i++;
+    setTimeout(loopVoice,10000);
+}
+
 function draw(cities){
     document.querySelectorAll(".marker").forEach(m=>m.remove());
 
     cities.forEach(c=>{
-        if(!c.lat||!c.lon) return;
-
         let p=geoToXY(c.lat,c.lon);
 
         let m=document.createElement("div");
         m.className="marker "+c.alert;
-
         m.style.left=p.x+"px";
         m.style.top=p.y+"px";
 
@@ -140,12 +162,16 @@ function load(){
     fetch("/data")
     .then(r=>r.json())
     .then(d=>{
+        cities=d.cities;
+
         eas();
 
         document.querySelector("#ticker span").innerText =
-            d.cities.map(c=>c.name+": "+c.current.temperature_2m+"°C").join(" | ");
+            d.cities.map(c=>`${c.name}: ${c.current.temperature_2m}°C`).join(" | ");
 
         draw(d.cities);
+
+        if(i===0) loopVoice();
     });
 }
 
