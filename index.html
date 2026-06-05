@@ -12,18 +12,13 @@ body { margin:0; background:black; color:white; font-family:Arial; overflow:hidd
     height:960px;
     margin:auto;
     position:relative;
-    overflow:hidden; /* 🔥 FIX: mapa + markery nie wychodzą */
 }
 
 #map {
     width:100%;
     height:100%;
     position:absolute;
-    top:0;
-    left:0;
     object-fit:cover;
-    display:block;
-    z-index:0;
 }
 
 .marker {
@@ -32,7 +27,6 @@ body { margin:0; background:black; color:white; font-family:Arial; overflow:hidd
     height:10px;
     border-radius:50%;
     transform:translate(-50%,-50%);
-    z-index:2;
 }
 
 .marker.OK { background:lime; }
@@ -51,7 +45,7 @@ body { margin:0; background:black; color:white; font-family:Arial; overflow:hidd
 #ticker span {
     display:inline-block;
     padding-left:100%;
-    animation:scroll 40s linear infinite;
+    animation:scroll 120s linear infinite; /* wolniej */
 }
 
 @keyframes scroll {
@@ -76,7 +70,7 @@ body { margin:0; background:black; color:white; font-family:Arial; overflow:hidd
 <body>
 
 <div id="tv">
-    <img id="map" src="map.png?v=2">
+    <img id="map" src="map.png?v=1">
 </div>
 
 <div id="ticker"><span>LOADING...</span></div>
@@ -85,10 +79,6 @@ body { margin:0; background:black; color:white; font-family:Arial; overflow:hidd
 
 <script>
 
-let EAS = false;
-let loop = null;
-let mapReady = false;
-
 const MAP = {
     latMin:49.0,
     latMax:55.2,
@@ -96,145 +86,71 @@ const MAP = {
     lonMax:24.5
 };
 
-/* =========================
-   MAP INIT (🔥 FIX KLUCZOWY)
-========================= */
-window.addEventListener("load", () => {
-    const img = document.getElementById("map");
-
-    function enableMap(){
-        mapReady = true;
-        load();
-    }
-
-    img.onload = () => {
-        enableMap();
-    };
-
-    // fallback (bo cache / render czasem nie odpala onload)
-    setTimeout(enableMap, 1200);
-});
-
-/* =========================
-   GEO FIX (POPRAWNE WYMIARY)
-========================= */
 function geo(lat, lon){
     const m = document.getElementById("map");
-
-    let w = m.offsetWidth;
-    let h = m.offsetHeight;
-
     return {
-        x: ((lon - MAP.lonMin) / (MAP.lonMax - MAP.lonMin)) * w,
-        y: ((MAP.latMax - lat) / (MAP.latMax - MAP.latMin)) * h
+        x: ((lon-MAP.lonMin)/(MAP.lonMax-MAP.lonMin))*m.clientWidth,
+        y: ((MAP.latMax-lat)/(MAP.latMax-MAP.latMin))*m.clientHeight
     };
 }
 
-/* =========================
-   MAP DRAW (SAFE)
-========================= */
 function draw(cities){
+    document.querySelectorAll(".marker").forEach(e=>e.remove());
 
-    if(!mapReady) return;
+    cities.forEach(c=>{
+        if(!c.lat||!c.lon) return;
 
-    document.querySelectorAll(".marker").forEach(e => e.remove());
-
-    cities.forEach(c => {
-        if(!c.lat || !c.lon) return;
-
-        let p = geo(c.lat, c.lon);
+        let p = geo(c.lat,c.lon);
 
         let d = document.createElement("div");
-        d.className = "marker " + (c.alert === "EAS" ? "EAS" : "OK");
+        d.className = "marker " + (c.alert==="EAS"?"EAS":"OK");
 
-        d.style.left = p.x + "px";
-        d.style.top = p.y + "px";
+        d.style.left = p.x+"px";
+        d.style.top = p.y+"px";
 
         document.getElementById("tv").appendChild(d);
     });
 }
 
-/* =========================
-   TICKER (TWÓJ ORYGINAŁ)
-========================= */
-function updateTicker(cities){
+function ticker(cities){
     document.querySelector("#ticker span").innerText =
         cities.map(c => {
-            let cur = c.current || {};
-            let h = c.hourly || {};
+            let cur = c.current;
 
             return `${c.name} | ` +
-                `Temp (2m): ${cur.temperature_2m ?? "brak"}°C | ` +
-                `Apparent: ${cur.apparent_temperature ?? "brak"}°C | ` +
-                `Humidity: ${cur.relative_humidity_2m ?? "brak"}% | ` +
-                `Precip Prob: ${h.precipitation_probability?.[0] ?? "brak"}% | ` +
-                `Precip: ${h.precipitation?.[0] ?? "brak"} mm | ` +
-                `Snow Depth: ${h.snow_depth?.[0] ?? "brak"} | ` +
-                `Wind 10m: ${cur.wind_speed_10m ?? "brak"} m/s | ` +
-                `Wind 80m: ${h.wind_speed_80m?.[0] ?? "brak"} m/s | ` +
-                `Wind Dir: ${h.wind_direction_10m?.[0] ?? "brak"}° | ` +
-                `Gusts: ${h.wind_gusts_10m?.[0] ?? "brak"} m/s | ` +
-                `Clouds: ${cur.cloud_cover ?? "brak"}% | ` +
-                `Pressure MSL: ${cur.pressure_msl ?? "brak"} hPa | ` +
-                `Surface Pressure: ${cur.surface_pressure ?? "brak"} hPa | ` +
-                `Visibility: ${cur.visibility ?? "brak"} m | ` +
-                `UV: ${h.uv_index?.[0] ?? "brak"} | ` +
-                `UV Clear: ${h.uv_index_clear_sky?.[0] ?? "brak"} | ` +
-                `Sunshine: ${h.sunshine_duration?.[0] ?? "brak"} | ` +
-                `Weather Code: ${cur.weather_code ?? "brak"} | ` +
-                `Is Day: ${cur.is_day ?? "brak"} | ` +
-                `Max Temp: ${h.temperature_2m_max?.[0] ?? "brak"}°C | ` +
-                `Min Temp: ${h.temperature_2m_min?.[0] ?? "brak"}°C | ` +
-                `Sunrise: ${h.sunrise?.[0] ?? "brak"} | ` +
-                `Sunset: ${h.sunset?.[0] ?? "brak"}`;
-        }).join(" || ");
+                `T:${cur.temperature_2m}°C | ` +
+                `RH:${cur.relative_humidity_2m}% | ` +
+                `W:${cur.wind_speed_10m} m/s | ` +
+                `P:${cur.pressure_msl} hPa | ` +
+                `C:${cur.cloud_cover}%`;
+        }).join(" | ");
 }
 
-/* =========================
-   EAS SYSTEM
-========================= */
-function setEAS(state){
+function eas(cities){
+    let active = cities.some(c=>c.alert==="EAS");
     let box = document.getElementById("eas");
 
-    if(state){
-        EAS = true;
-        box.style.display = "flex";
-        box.innerText = "⚠ EAS ACTIVE ⚠";
-
-        clearInterval(loop);
+    if(active){
+        box.style.display="flex";
+        box.innerText="⚠ EAS ACTIVE ⚠";
         speechSynthesis.cancel();
     } else {
-        EAS = false;
-        box.style.display = "none";
-        start();
+        box.style.display="none";
     }
 }
 
-/* =========================
-   LOAD LOOP
-========================= */
 function load(){
     fetch("/data")
     .then(r=>r.json())
     .then(d=>{
-        let cities = d.cities;
-
-        if(d.eas && !EAS) setEAS(true);
-        if(!d.eas && EAS) setEAS(false);
-
-        if(!EAS){
-            updateTicker(cities);
-            draw(cities);
-        }
+        ticker(d.cities);
+        draw(d.cities);
+        eas(d.cities);
     });
 }
 
-function start(){
-    loop = setInterval(load, 15000);
-    load();
-}
-
-start();
+setInterval(load, 15000);
+load();
 
 </script>
 
