@@ -1,8 +1,7 @@
-from flask import Flask, jsonify, send_from_directory, request
+from flask import Flask, jsonify, send_from_directory
 import requests
-import threading
 import time
-import os
+import threading
 
 app = Flask(__name__)
 
@@ -23,15 +22,15 @@ NAMES = ["Zakopane","Przemyśl","Bielsko-Biała","Kraków","Katowice",
          "Augustów","Suwałki","Świnoujście","Kołobrzeg","Koszalin",
          "Gdańsk","Gdynia"]
 
-# 🔴 EAS STATE
+CACHE = []
+CACHE_TIME = 0
+CACHE_TTL = 60  # 60 sekund cache
+
 EAS_ACTIVE = False
-EAS_END_TIME = 0
+EAS_END = 0
 
 
-# =========================
-# WEATHER
-# =========================
-def get_city(i):
+def fetch_city(i):
     url = "https://api.open-meteo.com/v1/forecast"
 
     params = {
@@ -40,94 +39,79 @@ def get_city(i):
         "current": [
             "temperature_2m",
             "relative_humidity_2m",
-            "dew_point_2m",
             "apparent_temperature",
-            "weather_code",
-            "pressure_msl",
+            "wind_speed_10m",
             "cloud_cover",
-            "wind_speed_10m",
+            "weather_code",
             "visibility",
+            "pressure_msl",
+            "surface_pressure",
             "is_day"
-        ],
-        "hourly": [
-            "wind_speed_10m",
-            "wind_speed_80m",
-            "wind_gusts_10m",
-            "precipitation_probability",
-            "precipitation",
-            "snowfall",
-            "sunshine_duration",
-            "cape"
-        ],
-        "timezone": "Europe/Warsaw"
+        ]
     }
 
     try:
         r = requests.get(url, params=params, timeout=10).json()
     except:
-        return {"name": NAMES[i], "error": True}
+        return {"name": NAMES[i], "current": {}, "lat": LAT[i], "lon": LON[i], "alert": "OK"}
 
     return {
         "name": NAMES[i],
         "lat": LAT[i],
         "lon": LON[i],
         "current": r.get("current", {}),
-        "hourly": r.get("hourly", {}),
         "alert": "EAS" if EAS_ACTIVE else "OK"
     }
 
 
-# =========================
-# ROUTES
-# =========================
+def update_cache():
+    global CACHE, CACHE_TIME
+
+    while True:
+        data = [fetch_city(i) for i in range(len(NAMES))]
+        CACHE = data
+        CACHE_TIME = time.time()
+        time.sleep(CACHE_TTL)
+
+
 @app.route("/")
 def home():
     return send_from_directory(".", "index.html")
+
+
+@app.route("/map.png")
+def map():
+    return send_from_directory(".", "map.png")
 
 
 @app.route("/data")
 def data():
     return jsonify({
         "eas": EAS_ACTIVE,
-        "cities": [get_city(i) for i in range(len(NAMES))],
-        "system_info": "Weather-TV system built step-by-step over multiple hours (stream build mode)"
+        "cities": CACHE
     })
 
 
-# =========================
-# ESP32 TRIGGER
-# =========================
 @app.route("/esp32/eas_test", methods=["POST"])
-def esp32_eas():
-    global EAS_ACTIVE, EAS_END_TIME
-
-    print("🔴 ESP32 TRIGGER → EAS TEST MODE")
+def eas():
+    global EAS_ACTIVE, EAS_END
 
     EAS_ACTIVE = True
-    EAS_END_TIME = time.time() + 60
+    EAS_END = time.time() + 60
 
-    return jsonify({"status": "EAS TEST ACTIVE", "duration": 60})
+    return {"ok": True}
 
 
-# =========================
-# EAS WATCHER
-# =========================
-def eas_watcher():
+def eas_loop():
     global EAS_ACTIVE
-
     while True:
-        if EAS_ACTIVE and time.time() > EAS_END_TIME:
-            print("🟢 EAS STOP")
+        if EAS_ACTIVE and time.time() > EAS_END:
             EAS_ACTIVE = False
-
         time.sleep(1)
 
 
-# =========================
-# START
-# =========================
-threading.Thread(target=eas_watcher, daemon=True).start()
+threading.Thread(target=update_cache, daemon=True).start()
+threading.Thread(target=eas_loop, daemon=True).start()
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
