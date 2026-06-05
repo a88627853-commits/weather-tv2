@@ -45,7 +45,7 @@ body { margin:0; background:black; color:white; font-family:Arial; overflow:hidd
 #ticker span {
     display:inline-block;
     padding-left:100%;
-    animation:scroll 120s linear infinite; /* wolniej */
+    animation:scroll 120s linear infinite;
 }
 
 @keyframes scroll {
@@ -74,11 +74,13 @@ body { margin:0; background:black; color:white; font-family:Arial; overflow:hidd
 </div>
 
 <div id="ticker"><span>LOADING...</span></div>
-
 <div id="eas"></div>
 
 <script>
 
+/* =========================
+   MAPA
+========================= */
 const MAP = {
     latMin:49.0,
     latMax:55.2,
@@ -94,11 +96,31 @@ function geo(lat, lon){
     };
 }
 
+/* =========================
+   TTS (WBUDOWANY SYSTEM)
+========================= */
+const TTS = {
+    speak(text){
+        if(!("speechSynthesis" in window)) return;
+
+        speechSynthesis.cancel();
+
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.lang = "pl-PL";
+        msg.rate = 1;
+
+        speechSynthesis.speak(msg);
+    }
+};
+
+/* =========================
+   MAPA MARKERY
+========================= */
 function draw(cities){
     document.querySelectorAll(".marker").forEach(e=>e.remove());
 
     cities.forEach(c=>{
-        if(!c.lat||!c.lon) return;
+        if(!c.lat || !c.lon) return;
 
         let p = geo(c.lat,c.lon);
 
@@ -112,20 +134,29 @@ function draw(cities){
     });
 }
 
+/* =========================
+   TICKER + TTS TOGETHER
+========================= */
 function ticker(cities){
-    document.querySelector("#ticker span").innerText =
-        cities.map(c => {
-            let cur = c.current;
 
-            return `${c.name} | ` +
-                `T:${cur.temperature_2m}°C | ` +
-                `RH:${cur.relative_humidity_2m}% | ` +
-                `W:${cur.wind_speed_10m} m/s | ` +
-                `P:${cur.pressure_msl} hPa | ` +
-                `C:${cur.cloud_cover}%`;
-        }).join(" | ");
+    let text = cities.map(c=>{
+        let cur = c.current;
+
+        return `${c.name} temperatura ${cur.temperature_2m} stopni, ` +
+               `wilgotność ${cur.relative_humidity_2m} procent, ` +
+               `wiatr ${cur.wind_speed_10m} metrów na sekundę, ` +
+               `ciśnienie ${cur.pressure_msl} hPa`;
+    }).join(" | ");
+
+    document.querySelector("#ticker span").innerText = text;
+
+    // 🔥 JEDNO WYWOŁANIE TTS
+    TTS.speak(text);
 }
 
+/* =========================
+   EAS
+========================= */
 function eas(cities){
     let active = cities.some(c=>c.alert==="EAS");
     let box = document.getElementById("eas");
@@ -139,6 +170,9 @@ function eas(cities){
     }
 }
 
+/* =========================
+   MAIN LOOP
+========================= */
 function load(){
     fetch("/data")
     .then(r=>r.json())
@@ -149,7 +183,7 @@ function load(){
     });
 }
 
-setInterval(load, 15000);
+setInterval(load,15000);
 load();
 
 </script>
