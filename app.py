@@ -15,6 +15,18 @@ CITIES = [
     "Gdańsk","Gdynia"
 ]
 
+# 🔥 FIX: fallback geolokalizacji (WeatherAPI czasem nie daje lat/lon)
+CITY_GEO = {
+    "Wrocław": (51.107883, 17.038538),
+    "Łódź": (51.759247, 19.455982),
+    "Poznań": (52.406376, 16.925167),
+    "Płock": (52.546345, 19.706535),
+    "Białystok": (53.132488, 23.168840),
+    "Suwałki": (54.099941, 22.931711),
+    "Kołobrzeg": (54.181679, 15.569580),
+    "Przemyśl": (49.783699, 22.768030)
+}
+
 CACHE = None
 CACHE_TIME = 0
 CACHE_TTL = 60
@@ -36,6 +48,8 @@ def fetch_city(city):
         data = r.json()
 
         if "error" in data:
+            lat, lon = CITY_GEO.get(city, (None, None))
+
             return {
                 "name": city,
                 "temp": None,
@@ -48,18 +62,24 @@ def fetch_city(city):
                 "text": None,
                 "icon": None,
                 "code": -1,
-                "lat": None,
-                "lon": None
+                "lat": lat,
+                "lon": lon
             }
 
         current = data.get("current") or {}
         cond = current.get("condition") or {}
+        location = data.get("location") or {}
 
         icon = cond.get("icon")
         if icon and icon.startswith("//"):
             icon = "https:" + icon
 
-        location = data.get("location") or {}
+        lat = location.get("lat")
+        lon = location.get("lon")
+
+        # 🔥 FALLBACK jeśli API nie dało współrzędnych
+        if not lat or not lon:
+            lat, lon = CITY_GEO.get(city, (None, None))
 
         return {
             "name": city,
@@ -72,12 +92,14 @@ def fetch_city(city):
             "vis": current.get("vis_km"),
             "text": cond.get("text"),
             "icon": icon,
-            "code": cond.get("code"),
-            "lat": location.get("lat"),
-            "lon": location.get("lon")
+            "code": cond.get("code", -1),
+            "lat": lat,
+            "lon": lon
         }
 
     except Exception:
+        lat, lon = CITY_GEO.get(city, (None, None))
+
         return {
             "name": city,
             "temp": None,
@@ -90,8 +112,8 @@ def fetch_city(city):
             "text": None,
             "icon": None,
             "code": -1,
-            "lat": None,
-            "lon": None
+            "lat": lat,
+            "lon": lon
         }
 
 
@@ -102,9 +124,11 @@ def get_data():
 
     if CACHE is None or (now - CACHE_TIME) > CACHE_TTL:
         new_cache = []
+
         for c in CITIES:
             new_cache.append(fetch_city(c))
             time.sleep(0.12)
+
         CACHE = new_cache
         CACHE_TIME = now
 
