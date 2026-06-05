@@ -1,8 +1,5 @@
 from flask import Flask, jsonify, send_from_directory
 import requests
-import pyttsx3
-import threading
-import time
 
 app = Flask(__name__)
 
@@ -23,17 +20,9 @@ NAMES = ["Zakopane","Przemyśl","Bielsko-Biała","Kraków","Katowice",
          "Augustów","Suwałki","Świnoujście","Kołobrzeg","Koszalin",
          "Gdańsk","Gdynia"]
 
-engine = pyttsx3.init()
-engine.setProperty("rate", 165)
-
-
-def speak(text):
-    engine.say(text)
-    engine.runAndWait()
-
-
 def calculate_alert(cur, h):
     wind = h.get("wind_speed_10m", [0])[0]
+    gust = h.get("wind_gusts_10m", [0])[0]
     rain = h.get("precipitation_probability", [0])[0]
     snow = h.get("snow_depth", [0])[0]
     code = cur.get("weather_code", 0)
@@ -41,8 +30,12 @@ def calculate_alert(cur, h):
     score = 0
     if wind > 20: score += 2
     elif wind > 12: score += 1
+
+    if gust > 25: score += 2
+
     if rain > 70: score += 2
     elif rain > 40: score += 1
+
     if snow > 5: score += 2
     if code >= 95: score += 3
 
@@ -79,8 +72,7 @@ def get_city(i):
             "snow_depth",
             "uv_index",
             "uv_index_clear_sky",
-            "sunshine_duration",
-            "cloud_cover"
+            "sunshine_duration"
         ],
         "daily": [
             "temperature_2m_max",
@@ -134,36 +126,5 @@ def eas_global():
     return jsonify({"level": "GREEN", "cities": []})
 
 
-def broadcast():
-    while True:
-        cities = [get_city(i) for i in range(len(NAMES))]
-
-        for c in cities:
-            cur = c["current"]
-            h = c["hourly"]
-
-            speak(c["name"])
-
-            if c["alert"] == "EXTREME":
-                speak(f"ALERT KRYTYCZNY. {c['name']}. WARUNKI EKSTREMALNE.")
-                time.sleep(5)
-                continue
-
-            if c["alert"] == "HIGH":
-                speak(f"OSTRZEŻENIE. {c['name']}.")
-
-            speak(f"Temperatura {cur.get('temperature_2m')} stopni.")
-            speak(f"Wilgotność {cur.get('relative_humidity_2m')} procent.")
-            speak(f"Odczuwalna {cur.get('apparent_temperature')} stopni.")
-            speak(f"Wiatr {h.get('wind_speed_10m',[0])[0]} m/s.")
-            speak(f"Zachmurzenie {cur.get('cloud_cover')} procent.")
-            speak(f"Ciśnienie {cur.get('pressure_msl')} hPa.")
-            speak(f"Widoczność {h.get('visibility',[0])[0]} metrów.")
-            speak(f"UV {h.get('uv_index',[0])[0]}.")
-
-            time.sleep(10)
-
-
 if __name__ == "__main__":
-    threading.Thread(target=broadcast, daemon=True).start()
     app.run(host="0.0.0.0")
