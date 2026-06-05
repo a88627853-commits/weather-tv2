@@ -13,7 +13,6 @@ body {
     overflow:hidden;
 }
 
-/* MAPA */
 #tv {
     width:1000px;
     height:1000px;
@@ -28,37 +27,28 @@ body {
     object-fit:cover;
 }
 
-/* MARKER */
+/* =========================
+   MARKERY (KROPKI)
+========================= */
 .marker {
     position:absolute;
-    width:10px;
-    height:10px;
+    width:12px;
+    height:12px;
     border-radius:50%;
     transform:translate(-50%,-50%);
-    z-index:5;
+    border:2px solid white;
+    transition:all 0.6s ease;
 }
 
-/* ICON */
-.wxicon {
-    position:absolute;
-    width:32px;
-    height:32px;
-    transform:translate(-50%,-50%);
-    pointer-events:none;
-    z-index:4;
-}
+.marker.sunny { background:#00ff00; }
+.marker.cloudy { background:#a0a0a0; }
+.marker.rain { background:#0099ff; }
+.marker.storm { background:#ff0000; }
+.marker.fog { background:#bbbbbb; }
 
-/* PANEL SUWAKA */
-#calib {
-    position:fixed;
-    top:10px;
-    left:10px;
-    background:#111;
-    padding:10px;
-    border:1px solid #444;
-    z-index:999;
-}
-
+/* =========================
+   TICKER
+========================= */
 #ticker {
     position:fixed;
     bottom:0;
@@ -72,7 +62,7 @@ body {
 #ticker span {
     display:inline-block;
     padding-left:100%;
-    animation:scroll 120s linear infinite;
+    animation:scroll 90s linear infinite;
 }
 
 @keyframes scroll {
@@ -80,6 +70,9 @@ body {
     100% { transform:translateX(-100%); }
 }
 
+/* =========================
+   EAS
+========================= */
 #eas {
     position:fixed;
     top:0; left:0;
@@ -91,15 +84,27 @@ body {
     font-size:40px;
     z-index:999;
 }
+
+/* =========================
+   SLIDER KALIBRACJI MAPY
+========================= */
+#sliderBox {
+    position:fixed;
+    top:10px;
+    left:10px;
+    background:#111;
+    padding:10px;
+    z-index:9999;
+}
+
 </style>
 </head>
 
 <body>
 
-<!-- SUWAK KALIBRACJI -->
-<div id="calib">
-    X offset <input type="range" id="xoff" min="-100" max="100" value="0"><br>
-    Y offset <input type="range" id="yoff" min="-100" max="100" value="0">
+<div id="sliderBox">
+    X offset <input id="xoff" type="range" min="-100" max="100" value="0"><br>
+    Y offset <input id="yoff" type="range" min="-100" max="100" value="0">
 </div>
 
 <div id="tv">
@@ -111,7 +116,9 @@ body {
 
 <script>
 
-/* MAPA */
+/* =========================
+   MAPA + KALIBRACJA
+========================= */
 const MAP = {
     latMin:49.0,
     latMax:55.2,
@@ -120,11 +127,10 @@ const MAP = {
 };
 
 function geo(lat, lon){
-
     const m = document.getElementById("map");
 
-    let xoff = parseInt(document.getElementById("xoff").value);
-    let yoff = parseInt(document.getElementById("yoff").value);
+    const xoff = parseInt(document.getElementById("xoff").value);
+    const yoff = parseInt(document.getElementById("yoff").value);
 
     return {
         x: ((lon-MAP.lonMin)/(MAP.lonMax-MAP.lonMin))*m.clientWidth + xoff,
@@ -132,99 +138,123 @@ function geo(lat, lon){
     };
 }
 
-/* TTS */
+
+/* =========================
+   TTS (BEZ GLITCHY)
+========================= */
 const TTS = {
-    last:0,
-    speak(t){
+    lastText: "",
+
+    speak(text){
         if(!("speechSynthesis" in window)) return;
 
-        if(Date.now()-this.last < 60000) return;
+        if(text === this.lastText) return; // 🔥 FIX: brak powtórek
+
+        this.lastText = text;
 
         speechSynthesis.cancel();
 
-        let msg = new SpeechSynthesisUtterance(t);
-        msg.lang="pl-PL";
-        msg.rate=1;
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.lang = "pl-PL";
+        msg.rate = 1;
 
         speechSynthesis.speak(msg);
-
-        this.last = Date.now();
     }
 };
 
-/* KOLORY */
-function getColor(code){
-    if(code===1000) return "yellow";
-    if([1003,1006,1009].includes(code)) return "gray";
-    if(code>=1063 && code<=1246) return "deepskyblue";
-    if(code>=1273) return "red";
-    return "lime";
+
+/* =========================
+   KOLOR POGODY
+========================= */
+function getClass(city){
+    if(!city.temp) return "fog";
+
+    if(city.code >= 1000 && city.code < 1100) return "sunny";
+    if(city.text && city.text.toLowerCase().includes("rain")) return "rain";
+    if(city.text && city.text.toLowerCase().includes("thunder")) return "storm";
+    if(city.cloud > 70) return "cloudy";
+
+    return "cloudy";
 }
 
-/* RYSOWANIE */
+
+/* =========================
+   MARKERY
+========================= */
 function draw(cities){
 
-    document.querySelectorAll(".marker,.wxicon").forEach(e=>e.remove());
+    document.querySelectorAll(".marker").forEach(e=>e.remove());
 
     cities.forEach(c=>{
-
         if(!c.lat || !c.lon) return;
 
         let p = geo(c.lat,c.lon);
 
-        let dot = document.createElement("div");
-        dot.className="marker";
-        dot.style.left=p.x+"px";
-        dot.style.top=p.y+"px";
-        dot.style.background=getColor(c.code);
+        let d = document.createElement("div");
+        d.className = "marker " + getClass(c);
 
-        document.getElementById("tv").appendChild(dot);
+        d.style.left = p.x+"px";
+        d.style.top = p.y+"px";
 
+        /* ikona pogody */
         if(c.icon){
-            let img = document.createElement("img");
-            img.className="wxicon";
-            img.src = c.icon.startsWith("http") ? c.icon : "https:" + c.icon;
-
-            img.style.left=(p.x-30)+"px";
-            img.style.top=(p.y+30)+"px";
-
-            document.getElementById("tv").appendChild(img);
+            d.style.backgroundImage = `url(${c.icon})`;
+            d.style.backgroundSize = "cover";
         }
+
+        document.getElementById("tv").appendChild(d);
     });
 }
 
-/* TICKER */
+
+/* =========================
+   SMOOTH TICKER + TTS FIX
+========================= */
+let lastSnapshot = "";
+
 function ticker(cities){
 
-    const safe=v=>(v===null||v===undefined)?"?":v;
+    const text = cities.map(c => {
 
-    let text = cities.map(c=>{
+        const temp = c.temp ?? "?";
+        const wind = c.wind ?? "?";
+        const hum = c.humidity ?? "?";
+        const pres = c.pressure ?? "?";
 
-        return `${c.name} | ${safe(c.temp)}°C | ${safe(c.wind)}km/h | ${safe(c.humidity)}% | ${safe(c.pressure)}hPa`;
+        return `${c.name}: ${temp}°C | Wiatr ${wind}km/h | Wilg ${hum}% | Ciśn ${pres}hPa`;
 
     }).join(" || ");
 
-    document.querySelector("#ticker span").textContent=text;
+    document.querySelector("#ticker span").textContent = text;
 
-    TTS.speak(text);
+    /* 🔥 TTS tylko gdy zmiana */
+    if(text !== lastSnapshot){
+        TTS.speak("Nowa prognoza pogodowa została zaktualizowana");
+        lastSnapshot = text;
+    }
 }
 
-/* EAS */
-function eas(cities){
-    let active = cities.some(c=>c.code>=1273);
 
-    let box=document.getElementById("eas");
+/* =========================
+   EAS
+========================= */
+function eas(cities){
+    let active = cities.some(c=>c.alert==="EAS");
+    let box = document.getElementById("eas");
 
     if(active){
         box.style.display="flex";
-        box.innerText="⚠ EAS WEATHER ALERT ⚠";
+        box.innerText="⚠ EAS ACTIVE ⚠";
         speechSynthesis.cancel();
-    }else{
+    } else {
         box.style.display="none";
     }
 }
 
-/* LOOP */
+
+/* =========================
+   MAIN LOOP (SMOOTH UPDATE)
+========================= */
 function load(){
     fetch("/data")
     .then(r=>r.json())
@@ -235,12 +265,8 @@ function load(){
     });
 }
 
+setInterval(load, 10000); // stabilniej niż spam 15s
 load();
-setInterval(load,3600000);
-
-/* live update suwaków */
-document.getElementById("xoff").oninput=()=>load();
-document.getElementById("yoff").oninput=()=>load();
 
 </script>
 
